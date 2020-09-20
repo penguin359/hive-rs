@@ -1,0 +1,8 @@
+[package]
+authors = ["langlorx"]
+edition = "2018"
+name = "registry"
+version = "0.1.0"
+
+[dependencies]
+byteorder = "*"
