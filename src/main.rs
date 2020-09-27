@@ -64,27 +64,39 @@ mod tests {
         assert_eq!(node.elements.len(), 1);
         assert_eq!(node.elements[0].key_offset, 0x000009a8);
         assert_eq!(node.elements[0].name_hash, 0x708c2182);
-        //assert_eq!(node.last_written, 0x01d44cd3660004ba);
-        //assert_eq!(node.access_bits, 0x00000000);
-        //assert_eq!(node.parent_offset, 0x00000020);
-        //assert_eq!(node.number_subkeys, 13);
-        //assert_eq!(node.number_volatile_subkeys, 0);
-        //assert_eq!(node.subkey_list_offset, 0x00010530);
-        //assert_eq!(node.volatile_subkey_list_offset, 0xffffffff);
-        //assert_eq!(node.key_value_count, 0);
-        //assert_eq!(node.key_value_offset, 0xffffffff);
-        //assert_eq!(node.key_security_offset, 0x00000318);
-        //assert_eq!(node.class_name_offset, 0xffffffff);
-        //assert_eq!(node.subkey_name_length_max, 26);
-        //assert_eq!(node.subkey_class_length_max, 0);
-        //assert_eq!(node.value_name_length_max, 0);
-        //assert_eq!(node.value_data_length_max, 0);
-        //assert_eq!(node.workvar, 0);
-        //assert_eq!(node.key_name_length, 13);
-        //assert_eq!(node.class_name_length, 0);
-        //assert_eq!(node.key_name, "Control Panel");
+    }
+
+    #[test]
+    fn test_parse_key_value() {
+        let buf = vec![
+            0xc8, 0xff, 0xff, 0xff, 0x76, 0x6b, 0x1d, 0x00,  //  |....vk..|
+            0x04, 0x00, 0x00, 0x80, 0x32, 0x00, 0x00, 0x00,  //  |....2...|
+            0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0xfc, 0xcf,  //  |........|
+            0x54, 0x6f, 0x75, 0x63, 0x68, 0x4d, 0x6f, 0x64,  //  |TouchMod|
+            0x65, 0x4e, 0x5f, 0x48, 0x6f, 0x6c, 0x64, 0x54,  //  |eN_HoldT|
+            0x69, 0x6d, 0x65, 0x5f, 0x41, 0x6e, 0x69, 0x6d,  //  |ime_Anim|
+            0x61, 0x74, 0x69, 0x6f, 0x6e, 0x00, 0x00, 0x00,  //  |ation...|
+
+            //0x001d
+            //0x80000004
+            //0x00000032
+            //0x04000000
+            //0x0001
+            //0xcffc
+        ];
+        let result = parse_key_value(&mut Cursor::new(&buf[6..]));
+        assert!(result.is_ok());
+        let node = result.unwrap();
+        assert_eq!(node.name.len(), 29);
+        assert_eq!(node.data_size, 0x80000004);
+        assert_eq!(node.data_offset, 50);
+        assert_eq!(node.data_type, 4);
+        assert_eq!(node.flags, 0x0001);
+        assert_eq!(node.spare, 0xcffc);
+        assert_eq!(node.name, "TouchModeN_HoldTime_Animation");
     }
 }
+
 
 
 
@@ -140,6 +152,35 @@ fn parse_hash_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<HashLeaf> 
     }
     Ok(HashLeaf {
         elements,
+    })
+}
+
+struct KeyValue {
+    data_size: u32,
+    data_offset: u32,
+    data_type: u32,
+    flags: u16,
+    spare: u16,
+    name: String,
+}
+
+fn parse_key_value<R: Read + Seek>(source: &mut R) -> std::io::Result<KeyValue> {
+    let name_length = source.read_u16::<LittleEndian>()?;
+    let data_size = source.read_u32::<LittleEndian>()?;
+    let data_offset = source.read_u32::<LittleEndian>()?;
+    let data_type = source.read_u32::<LittleEndian>()?;
+    let flags = source.read_u16::<LittleEndian>()?;
+    let spare = source.read_u16::<LittleEndian>()?;
+    let mut name = vec![0u8; name_length as usize];
+    source.read_exact(&mut name)?;
+    println!("Value: {:?}", std::str::from_utf8(&name));
+    Ok(KeyValue {
+        data_size,
+        data_offset,
+        data_type,
+        flags,
+        spare,
+        name: std::str::from_utf8(&name).unwrap().to_string(),
     })
 }
 
