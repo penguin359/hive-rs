@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::io::SeekFrom;
+use std::convert::{TryFrom, TryInto};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -76,13 +77,6 @@ mod tests {
             0x65, 0x4e, 0x5f, 0x48, 0x6f, 0x6c, 0x64, 0x54,  //  |eN_HoldT|
             0x69, 0x6d, 0x65, 0x5f, 0x41, 0x6e, 0x69, 0x6d,  //  |ime_Anim|
             0x61, 0x74, 0x69, 0x6f, 0x6e, 0x00, 0x00, 0x00,  //  |ation...|
-
-            //0x001d
-            //0x80000004
-            //0x00000032
-            //0x04000000
-            //0x0001
-            //0xcffc
         ];
         let result = parse_key_value(&mut Cursor::new(&buf[6..]));
         assert!(result.is_ok());
@@ -90,13 +84,12 @@ mod tests {
         assert_eq!(node.name.len(), 29);
         assert_eq!(node.data_size, 0x80000004);
         assert_eq!(node.data_offset, 50);
-        assert_eq!(node.data_type, 4);
+        assert_eq!(node.data_type, DataType::RegDword);
         assert_eq!(node.flags, 0x0001);
         assert_eq!(node.spare, 0xcffc);
         assert_eq!(node.name, "TouchModeN_HoldTime_Animation");
     }
 }
-
 
 
 
@@ -155,10 +148,49 @@ fn parse_hash_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<HashLeaf> 
     })
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum DataType {
+    RegNone                      = 0x00000000,
+    RegSz                        = 0x00000001,
+    RegExpandSz                  = 0x00000002,
+    RegBinary                    = 0x00000003,
+    RegDword                     = 0x00000004,
+    RegDwordBigEndian            = 0x00000005,
+    RegLink                      = 0x00000006,
+    RegMultiSz                   = 0x00000007,
+    RegResourceList              = 0x00000008,
+    RegFullResourceDescriptor    = 0x00000009,
+    RegResourceRequirementsList  = 0x0000000a,
+    RegQword                     = 0x0000000b,
+}
+
+impl TryFrom<u32> for DataType {
+    type Error = ();
+
+    fn try_from(v: u32) -> Result<Self, Self::Error> {
+        match v {
+            x if x == DataType::RegNone                     as u32 => Ok(DataType::RegNone                    ),
+            x if x == DataType::RegSz                       as u32 => Ok(DataType::RegSz                      ),
+            x if x == DataType::RegExpandSz                 as u32 => Ok(DataType::RegExpandSz                ),
+            x if x == DataType::RegBinary                   as u32 => Ok(DataType::RegBinary                  ),
+            x if x == DataType::RegDword                    as u32 => Ok(DataType::RegDword                   ),
+            x if x == DataType::RegDwordBigEndian           as u32 => Ok(DataType::RegDwordBigEndian          ),
+            x if x == DataType::RegLink                     as u32 => Ok(DataType::RegLink                    ),
+            x if x == DataType::RegMultiSz                  as u32 => Ok(DataType::RegMultiSz                 ),
+            x if x == DataType::RegResourceList             as u32 => Ok(DataType::RegResourceList            ),
+            x if x == DataType::RegFullResourceDescriptor   as u32 => Ok(DataType::RegFullResourceDescriptor  ),
+            x if x == DataType::RegResourceRequirementsList as u32 => Ok(DataType::RegResourceRequirementsList),
+            x if x == DataType::RegQword                    as u32 => Ok(DataType::RegQword                   ),
+            _ => Err(()),
+        }
+    }
+}
+
+
 struct KeyValue {
     data_size: u32,
     data_offset: u32,
-    data_type: u32,
+    data_type: DataType,
     flags: u16,
     spare: u16,
     name: String,
@@ -177,7 +209,7 @@ fn parse_key_value<R: Read + Seek>(source: &mut R) -> std::io::Result<KeyValue> 
     Ok(KeyValue {
         data_size,
         data_offset,
-        data_type,
+        data_type: data_type.try_into().unwrap(),
         flags,
         spare,
         name: std::str::from_utf8(&name).unwrap().to_string(),
