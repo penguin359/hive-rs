@@ -103,6 +103,35 @@ mod tests {
         assert_eq!(node.elements[0].key_offset, 0x0548);
         assert_eq!(node.elements[0].name_hint, *b"1200");
     }
+
+    #[test]
+    fn test_parse_key_security() {
+        let buf = vec![
+            0xb8, 0x00, 0x00, 0x00, 0x73, 0x6b, 0x20, 0x00,  //  |....sk .|
+            0x80, 0x63, 0x00, 0x00, 0x68, 0x01, 0x00, 0x00,  //  |.c..h...|
+            0x01, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00,  //  |....d...|
+            0x01, 0x00, 0x04, 0x80, 0x48, 0x00, 0x00, 0x00,  //  |....H...|
+            0x58, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  //  |X.......|
+            0x14, 0x00, 0x00, 0x00, 0x02, 0x00, 0x34, 0x00,  //  |......4.|
+            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x00,  //  |........|
+            0x3f, 0x00, 0x0f, 0x00, 0x01, 0x02, 0x00, 0x00,  //  |?.......|
+            0x00, 0x00, 0x00, 0x05, 0x20, 0x00, 0x00, 0x00,  //  |.... ...|
+            0x20, 0x02, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00,  //  | .......|
+            0x3f, 0x00, 0x0f, 0x00, 0x01, 0x01, 0x00, 0x00,  //  |?.......|
+            0x00, 0x00, 0x00, 0x05, 0x12, 0x00, 0x00, 0x00,  //  |........|
+            0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,  //  |........|
+            0x20, 0x00, 0x00, 0x00, 0x20, 0x02, 0x00, 0x00,  //  | ... ...|
+            0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,  //  |........|
+        ];
+        let result = parse_key_security(&mut Cursor::new(&buf[6..]));
+        !(result.is_ok());
+        let node = result.unwrap();
+        assert_eq!(node.flink, 0x6380);
+        assert_eq!(node.blink, 0x0168);
+        assert_eq!(node.reference_count, 1);
+        assert_eq!(node.descriptor.len(), 100-4);
+        assert_eq!(node.descriptor, &buf[24..]);
+    }
 }
 
 
@@ -113,7 +142,7 @@ const _HASH_LEAF:    u16 = 'l' as u16 + 'h' as u16 * 256;  // (lh) Subkeys list 
 const _INDEX_ROOT:   u16 = 'r' as u16 + 'i' as u16 * 256;  // (ri) List of subkeys lists
 const KEY_NODE:     u16 = 'n' as u16 + 'k' as u16 * 256;  // (nk) Registry key node
 const KEY_VALUE:    u16 = 'v' as u16 + 'k' as u16 * 256;  // (vk) Registry key value
-const _KEY_SECURITY: u16 = 's' as u16 + 'k' as u16 * 256;  // (sk) Security descriptor
+const KEY_SECURITY: u16 = 's' as u16 + 'k' as u16 * 256;  // (sk) Security descriptor
 const _BIG_DATA:     u16 = 'd' as u16 + 'b' as u16 * 256;  // (db) List of data segments
 
 struct KeyNode {
@@ -277,6 +306,7 @@ fn parse_key_node<R: Read + Seek>(source: &mut R) -> std::io::Result<KeyNode> {
     })
 }
 
+
 struct FastLeafElement {
     key_offset: u32,
     name_hint: [u8; 4],
@@ -303,6 +333,32 @@ fn parse_fast_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<FastLeaf> 
         elements,
     })
 }
+
+
+struct KeySecurity {
+    flink: u32,
+    blink: u32,
+    reference_count: u32,
+    descriptor: Vec<u8>,
+}
+
+fn parse_key_security<R: Read + Seek>(source: &mut R) -> std::io::Result<KeySecurity> {
+    let _reserved = source.read_u16::<LittleEndian>()?;
+    let flink = source.read_u32::<LittleEndian>()?;
+    let blink = source.read_u32::<LittleEndian>()?;
+    let reference_count = source.read_u32::<LittleEndian>()?;
+    let descriptor_size = source.read_u32::<LittleEndian>()?;
+    assert!(descriptor_size >= 4);
+    let mut descriptor = vec![0u8; (descriptor_size - 4) as usize];
+    source.read_exact(&mut descriptor)?;
+    Ok(KeySecurity {
+        flink,
+        blink,
+        reference_count,
+        descriptor,
+    })
+}
+
 
 fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32) -> std::io::Result<()> {
     let cell_size = source.read_i32::<LittleEndian>()?;
@@ -331,6 +387,9 @@ fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32) -> std::io::Result<
         },
         FAST_LEAF => {
             parse_fast_leaf(&mut Cursor::new(_buf))?;
+        },
+        KEY_SECURITY => {
+            parse_key_security(&mut Cursor::new(_buf))?;
         },
         _ => {},
     }
