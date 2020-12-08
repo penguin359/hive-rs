@@ -12,6 +12,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_load_base_block() {
+        let path = "boot/BCD";
+        let mut file = BufReader::new(File::open(path).unwrap());
+
+        let base_block = load_base_block(&mut file).unwrap();
+
+        assert_eq!(base_block.primary_seq, 108);
+        assert_eq!(base_block.secondary_seq, 108);
+        assert_eq!(base_block.last_modified, 0x1d682ac2b8d0f88);
+        assert_eq!(base_block.major_ver, 1);
+        assert_eq!(base_block.minor_ver, 3);
+        assert_eq!(base_block.file_type, 0);
+        assert_eq!(base_block.file_format, 1);
+        assert_eq!(base_block.root_cell_offset, 32);
+        assert_eq!(base_block.hive_data_size, 32768);
+        assert_eq!(base_block.clustering_factor, 1);
+    }
+
+    #[test]
+    fn test_load_root_key_node() {
+        let path = "boot/BCD";
+        let mut file = BufReader::new(File::open(path).unwrap());
+
+        let status = file.seek(SeekFrom::Start(4096+32));
+        assert!(status.is_ok());
+        let mut size = 65536;
+        let root_cell_status = load_cell(&mut file, &mut size);
+        assert!(root_cell_status.is_ok());
+    }
+
+    #[test]
     fn test_parse_key_node() {
         let buf = vec![
             0xa0, 0xff, 0xff, 0xff, 0x6e, 0x6b, 0x20, 0x00,  //  |....nk .|
@@ -124,7 +155,7 @@ mod tests {
             0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,  //  |........|
         ];
         let result = parse_key_security(&mut Cursor::new(&buf[6..]));
-        !(result.is_ok());
+        assert!(result.is_ok());
         let node = result.unwrap();
         assert_eq!(node.flink, 0x6380);
         assert_eq!(node.blink, 0x0168);
@@ -145,6 +176,7 @@ const KEY_VALUE:    u16 = 'v' as u16 + 'k' as u16 * 256;  // (vk) Registry key v
 const KEY_SECURITY: u16 = 's' as u16 + 'k' as u16 * 256;  // (sk) Security descriptor
 const _BIG_DATA:     u16 = 'd' as u16 + 'b' as u16 * 256;  // (db) List of data segments
 
+#[derive(Debug)]
 struct KeyNode {
     flags: u16,
     last_written: u64,
@@ -168,11 +200,13 @@ struct KeyNode {
     key_name: String,
 }
 
+#[derive(Debug)]
 struct NameHash {
     key_offset: u32,
     name_hash: u32,
 }
 
+#[derive(Debug)]
 struct HashLeaf {
     elements: Vec<NameHash>,
 }
@@ -230,6 +264,7 @@ impl TryFrom<u32> for DataType {
 }
 
 
+#[derive(Debug)]
 struct KeyValue {
     data_size: u32,
     data_offset: u32,
@@ -307,11 +342,13 @@ fn parse_key_node<R: Read + Seek>(source: &mut R) -> std::io::Result<KeyNode> {
 }
 
 
+#[derive(Debug)]
 struct FastLeafElement {
     key_offset: u32,
     name_hint: [u8; 4],
 }
 
+#[derive(Debug)]
 struct FastLeaf {
     elements: Vec<FastLeafElement>,
 }
@@ -335,6 +372,7 @@ fn parse_fast_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<FastLeaf> 
 }
 
 
+#[derive(Debug)]
 struct KeySecurity {
     flink: u32,
     blink: u32,
@@ -360,7 +398,15 @@ fn parse_key_security<R: Read + Seek>(source: &mut R) -> std::io::Result<KeySecu
 }
 
 
-fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32) -> std::io::Result<()> {
+#[derive(Debug)]
+enum Cell {
+    KeyNode(KeyNode),
+    KeyValue(KeyValue),
+    FastLeaf(FastLeaf),
+    KeySecurity(KeySecurity),
+}
+
+fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32) -> std::io::Result<Cell> {
     let cell_size = source.read_i32::<LittleEndian>()?;
     assert!((cell_size.abs() & 0x07) == 0);
     *size -= cell_size.abs() as u32;
@@ -370,7 +416,7 @@ fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32) -> std::io::Result<
     if cell_size > 0 {
         println!("Cell unallocated");
         source.seek(SeekFrom::Current(cell_size.abs() as i64 - 6))?;
-        return Ok(());
+        return Err(::std::io::Error::new(::std::io::ErrorKind::Other, "Empty cell"));
     }
     println!("Cell size: {}", cell_size.abs());
     println!("Cell raw: {:?}", &key);
@@ -378,49 +424,105 @@ fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32) -> std::io::Result<
     let cell_magic = key[0] as u16 + key[1] as u16 * 256;
     let mut _buf = vec![0u8; cell_size.abs() as usize - 6];
     source.read_exact(&mut _buf)?;
-    match cell_magic {
-        KEY_NODE => {
-            parse_key_node(&mut Cursor::new(_buf))?;
-        },
-        KEY_VALUE => {
-            parse_key_value(&mut Cursor::new(_buf))?;
-        },
-        FAST_LEAF => {
-            parse_fast_leaf(&mut Cursor::new(_buf))?;
-        },
-        KEY_SECURITY => {
-            parse_key_security(&mut Cursor::new(_buf))?;
-        },
-        _ => {},
-    }
+    let cell = match cell_magic {
+        KEY_NODE =>
+            Cell::KeyNode(parse_key_node(&mut Cursor::new(_buf))?)
+        ,
+        KEY_VALUE =>
+            Cell::KeyValue(parse_key_value(&mut Cursor::new(_buf))?)
+        ,
+        FAST_LEAF =>
+            Cell::FastLeaf(parse_fast_leaf(&mut Cursor::new(_buf))?)
+        ,
+        KEY_SECURITY =>
+            Cell::KeySecurity(parse_key_security(&mut Cursor::new(_buf))?)
+        ,
+        _ => { return Err(::std::io::Error::new(::std::io::ErrorKind::Other, "Unknown cell")); },
+    };
 
-    Ok(())
+    return Ok(cell);
 }
 
-fn main() {
-    let path = std::env::args().skip(1).nth(0).unwrap();
-    let mut file = BufReader::new(File::open(path).unwrap());
 
+struct BaseBlock {
+    primary_seq: u32,
+    secondary_seq: u32,
+    last_modified: u64,
+    major_ver: u32,
+    minor_ver: u32,
+    file_type: u32,
+    file_format: u32,
+    root_cell_offset: u32,
+    hive_data_size: u32,
+    clustering_factor: u32,
+}
+
+fn load_base_block<R: Read + Seek>(source: &mut R) -> std::io::Result<BaseBlock> {
     let mut magic = [0u8; 4];
-    file.read_exact(&mut magic).unwrap();
+    source.read_exact(&mut magic).unwrap();
     assert_eq!(&magic, b"regf");
-    let primary_seq = file.read_u32::<LittleEndian>().unwrap();
-    let secondary_seq = file.read_u32::<LittleEndian>().unwrap();
-    let last_modified = file.read_u64::<LittleEndian>().unwrap();
-    let major_ver = file.read_u32::<LittleEndian>().unwrap();
-    let minor_ver = file.read_u32::<LittleEndian>().unwrap();
-    let file_type = file.read_u32::<LittleEndian>().unwrap();
-    let file_format = file.read_u32::<LittleEndian>().unwrap();
-    let root_cell_offset = file.read_u32::<LittleEndian>().unwrap();
-    let hive_data_size = file.read_u32::<LittleEndian>().unwrap();
-    let clustering_factor = file.read_u32::<LittleEndian>().unwrap();
+    let primary_seq = source.read_u32::<LittleEndian>().unwrap();
+    let secondary_seq = source.read_u32::<LittleEndian>().unwrap();
+    let last_modified = source.read_u64::<LittleEndian>().unwrap();
+    let major_ver = source.read_u32::<LittleEndian>().unwrap();
+    let minor_ver = source.read_u32::<LittleEndian>().unwrap();
+    let file_type = source.read_u32::<LittleEndian>().unwrap();
+    let file_format = source.read_u32::<LittleEndian>().unwrap();
+    let root_cell_offset = source.read_u32::<LittleEndian>().unwrap();
+    let hive_data_size = source.read_u32::<LittleEndian>().unwrap();
+    let clustering_factor = source.read_u32::<LittleEndian>().unwrap();
     println!("P: {}, S: {}, LM: {}", primary_seq, secondary_seq, last_modified);
     println!("({}, {}) -> {} - {}", major_ver, minor_ver, file_type, file_format);
     println!("Root Cell Offset: {}", root_cell_offset);
     println!("Hive Data: {}", hive_data_size);
     println!("Clustering Factor: {}", clustering_factor);
 
-    file.seek(SeekFrom::Start(4096)).unwrap();
+    source.seek(SeekFrom::Start(4096)).unwrap();
+    Ok(BaseBlock {
+        primary_seq,
+        secondary_seq,
+        last_modified,
+        major_ver,
+        minor_ver,
+        file_type,
+        file_format,
+        root_cell_offset,
+        hive_data_size,
+        clustering_factor,
+    })
+}
+
+fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
+    source.seek(SeekFrom::Start(offset + 4096)).unwrap();
+    let mut size = 65536;
+    println!("KN Offset: {}", offset);
+    let cell = load_cell(source, &mut size).unwrap();
+    println!("{:?}", cell);
+    match cell {
+        Cell::KeyNode(node) => {
+            if node.number_subkeys > 0 {
+                source.seek(SeekFrom::Start(node.subkey_list_offset as u64 + 4096)).unwrap();
+                let subkey = load_cell(source, &mut size).unwrap();
+                println!("{:?}", subkey);
+                match subkey {
+                    Cell::FastLeaf(child) => {
+                        for offset in child.elements {
+                            dump_key_node(source, offset.key_offset as u64);
+                        }
+                    },
+                    _ => { panic!("Unknown child"); },
+                }
+            }
+        },
+        _ => { panic!("Wrong type"); },
+    }
+}
+
+fn main() {
+    let path = std::env::args().skip(1).nth(0).unwrap();
+    let mut file = BufReader::new(File::open(path).unwrap());
+
+    let base_block = load_base_block(&mut file).unwrap();
 
     let mut magic = [0u8; 4];
     file.read_exact(&mut magic).unwrap();
@@ -441,6 +543,7 @@ fn main() {
 //    println!("Cell raw: {:?}", &key);
 //    println!("Cell key: {:?}", std::str::from_utf8(&key));
 //    file.seek(SeekFrom::Current(cell_size.abs() as i64 - 6));
-      load_cell(&mut file, &mut size).unwrap();
+      load_cell(&mut file, &mut size).ok();
     }
+    dump_key_node(&mut file, base_block.root_cell_offset as u64);
 }
