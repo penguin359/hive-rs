@@ -38,7 +38,7 @@ mod tests {
         let status = file.seek(SeekFrom::Start(4096+32));
         assert!(status.is_ok());
         let mut size = 65536;
-        let root_cell_status = load_cell(&mut file, &mut size);
+        let root_cell_status = load_cell(&mut file, &mut size, false);
         assert!(root_cell_status.is_ok());
     }
 
@@ -399,26 +399,38 @@ fn parse_key_security<R: Read + Seek>(source: &mut R) -> std::io::Result<KeySecu
 
 
 #[derive(Debug)]
+struct Raw {
+    data: Vec<u8>,
+}
+
+#[derive(Debug)]
 enum Cell {
     KeyNode(KeyNode),
     KeyValue(KeyValue),
     FastLeaf(FastLeaf),
     KeySecurity(KeySecurity),
+    Raw(Raw),
 }
 
-fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32) -> std::io::Result<Cell> {
+fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32, raw: bool) -> std::io::Result<Cell> {
     let cell_size = source.read_i32::<LittleEndian>()?;
     assert!((cell_size.abs() & 0x07) == 0);
     *size -= cell_size.abs() as u32;
-    let mut key = [0u8; 2];
-    source.read_exact(&mut key)?;
-    //assert_eq!(&magic, b"hbin");
     if cell_size > 0 {
         println!("Cell unallocated");
         source.seek(SeekFrom::Current(cell_size.abs() as i64 - 6))?;
         return Err(::std::io::Error::new(::std::io::ErrorKind::Other, "Empty cell"));
     }
     println!("Cell size: {}", cell_size.abs());
+    if raw {
+        let mut buf = vec![0u8; cell_size.abs() as usize - 4];
+        source.read_exact(&mut buf)?;
+        return Ok(Cell::Raw(Raw {
+            data: buf,
+        }));
+    }
+    let mut key = [0u8; 2];
+    source.read_exact(&mut key)?;
     println!("Cell raw: {:?}", &key);
     println!("Cell key: {:?}", std::str::from_utf8(&key));
     let cell_magic = key[0] as u16 + key[1] as u16 * 256;
@@ -496,18 +508,42 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
     source.seek(SeekFrom::Start(offset + 4096)).unwrap();
     let mut size = 65536;
     println!("KN Offset: {}", offset);
-    let cell = load_cell(source, &mut size).unwrap();
+    let cell = load_cell(source, &mut size, false).unwrap();
     println!("{:?}", cell);
     match cell {
         Cell::KeyNode(node) => {
             if node.number_subkeys > 0 {
                 source.seek(SeekFrom::Start(node.subkey_list_offset as u64 + 4096)).unwrap();
-                let subkey = load_cell(source, &mut size).unwrap();
+                let subkey = load_cell(source, &mut size, false).unwrap();
                 println!("{:?}", subkey);
                 match subkey {
                     Cell::FastLeaf(child) => {
                         for offset in child.elements {
                             dump_key_node(source, offset.key_offset as u64);
+                        }
+                    },
+                    _ => { panic!("Unknown child"); },
+                }
+            }
+            if node.key_value_count > 0 {
+                println!("KV List Offset: {:x}", node.key_value_offset as u64 + 4096);
+                source.seek(SeekFrom::Start(node.key_value_offset as u64 + 4096)).unwrap();
+                let key_value_list = load_cell(source, &mut size, true).unwrap();
+                match key_value_list {
+                    Cell::Raw(value) => {
+                        let mut cursor = Cursor::new(&value.data[..]);
+                        for _ in 0..node.key_value_count {
+                            size = 65536;
+                            let offset = cursor.read_u32::<LittleEndian>().unwrap();
+                            source.seek(SeekFrom::Start(offset as u64 + 4096)).unwrap();
+                            let key_value = load_cell(source, &mut size, false).unwrap();
+                            println!("{:?}", key_value);
+                            match key_value {
+                                Cell::KeyValue(child) => {
+                                    //println!("");
+                                },
+                                _ => { panic!("Unknown child"); },
+                            }
                         }
                     },
                     _ => { panic!("Unknown child"); },
@@ -543,7 +579,7 @@ fn main() {
 //    println!("Cell raw: {:?}", &key);
 //    println!("Cell key: {:?}", std::str::from_utf8(&key));
 //    file.seek(SeekFrom::Current(cell_size.abs() as i64 - 6));
-      load_cell(&mut file, &mut size).ok();
+      load_cell(&mut file, &mut size, false).ok();
     }
     dump_key_node(&mut file, base_block.root_cell_offset as u64);
 }
