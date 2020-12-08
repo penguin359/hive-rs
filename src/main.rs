@@ -89,16 +89,30 @@ mod tests {
         assert_eq!(node.spare, 0xcffc);
         assert_eq!(node.name, "TouchModeN_HoldTime_Animation");
     }
+
+    #[test]
+    fn test_parse_fast_leaf() {
+        let buf = vec![
+            0xf0, 0xff, 0xff, 0xff, 0x6c, 0x66, 0x01, 0x00,  //  |....lf..|
+            0x48, 0x05, 0x00, 0x00, 0x31, 0x32, 0x30, 0x30,  //  |H...1200|
+        ];
+        let result = parse_fast_leaf(&mut Cursor::new(&buf[6..]));
+        assert!(result.is_ok());
+        let node = result.unwrap();
+        assert_eq!(node.elements.len(), 1);
+        assert_eq!(node.elements[0].key_offset, 0x0548);
+        assert_eq!(node.elements[0].name_hint, *b"1200");
+    }
 }
 
 
 
 const _INDEX_LEAF:   u16 = 'l' as u16 + 'i' as u16 * 256;  // (li) Subkeys list
-const _FAST_LEAF:    u16 = 'l' as u16 + 'f' as u16 * 256;  // (lf) Subkeys list with name hints
+const FAST_LEAF:    u16 = 'l' as u16 + 'f' as u16 * 256;  // (lf) Subkeys list with name hints
 const _HASH_LEAF:    u16 = 'l' as u16 + 'h' as u16 * 256;  // (lh) Subkeys list with name hashes
 const _INDEX_ROOT:   u16 = 'r' as u16 + 'i' as u16 * 256;  // (ri) List of subkeys lists
 const KEY_NODE:     u16 = 'n' as u16 + 'k' as u16 * 256;  // (nk) Registry key node
-const _KEY_VALUE:    u16 = 'v' as u16 + 'k' as u16 * 256;  // (vk) Registry key value
+const KEY_VALUE:    u16 = 'v' as u16 + 'k' as u16 * 256;  // (vk) Registry key value
 const _KEY_SECURITY: u16 = 's' as u16 + 'k' as u16 * 256;  // (sk) Security descriptor
 const _BIG_DATA:     u16 = 'd' as u16 + 'b' as u16 * 256;  // (db) List of data segments
 
@@ -263,6 +277,33 @@ fn parse_key_node<R: Read + Seek>(source: &mut R) -> std::io::Result<KeyNode> {
     })
 }
 
+struct FastLeafElement {
+    key_offset: u32,
+    name_hint: [u8; 4],
+}
+
+struct FastLeaf {
+    elements: Vec<FastLeafElement>,
+}
+
+fn parse_fast_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<FastLeaf> {
+    let count = source.read_u16::<LittleEndian>()?;
+    let mut elements = Vec::new();
+    for _ in 0..count {
+        let key_offset = source.read_u32::<LittleEndian>()?;
+        let mut name_hint = [0u8; 4];
+        source.read_exact(&mut name_hint)?;
+        println!("Name hint: {:?}", std::str::from_utf8(&name_hint));
+        elements.push(FastLeafElement {
+            key_offset,
+            name_hint,
+        });
+    }
+    Ok(FastLeaf {
+        elements,
+    })
+}
+
 fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32) -> std::io::Result<()> {
     let cell_size = source.read_i32::<LittleEndian>()?;
     assert!((cell_size.abs() & 0x07) == 0);
@@ -284,6 +325,12 @@ fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32) -> std::io::Result<
     match cell_magic {
         KEY_NODE => {
             parse_key_node(&mut Cursor::new(_buf))?;
+        },
+        KEY_VALUE => {
+            parse_key_value(&mut Cursor::new(_buf))?;
+        },
+        FAST_LEAF => {
+            parse_fast_leaf(&mut Cursor::new(_buf))?;
         },
         _ => {},
     }
