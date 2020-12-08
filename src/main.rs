@@ -540,7 +540,20 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
                             println!("{:?}", key_value);
                             match key_value {
                                 Cell::KeyValue(child) => {
-                                    //println!("");
+                                    if child.data_size > 0 {
+                                        if child.data_size & 0x80000000 != 0 {
+                                            println!("Data: {:?}", child.data_offset);
+                                        } else {
+                                            source.seek(SeekFrom::Start(child.data_offset as u64 + 4096)).unwrap();
+                                            let data_value = load_cell(source, &mut size, true).unwrap();
+                                            match data_value {
+                                                Cell::Raw(n) => {
+                                                    println!("Data: {:?}", n.data);
+                                                },
+                                                _ => { panic!("Unknown child"); },
+                                            }
+                                        }
+                                    }
                                 },
                                 _ => { panic!("Unknown child"); },
                             }
