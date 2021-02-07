@@ -122,6 +122,24 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_index_leaf() {
+        // This cell is in NT 3.1 Hive format 1.1
+        let buf = vec![
+            0xe0, 0xff, 0xff, 0xff, 0x40, 0x08, 0x00, 0x00,  //  |....@...|
+            0x6c, 0x69, 0x03, 0x00, 0x30, 0x42, 0x00, 0x00,  //  |li..0B..|
+            0x60, 0x49, 0x00, 0x00, 0xf0, 0x55, 0x00, 0x00,  //  |`I...U..|
+            0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2,  //  |........|
+        ];
+        let result = parse_index_leaf(&mut Cursor::new(&buf[6+4..]));
+        assert!(result.is_ok());
+        let node = result.unwrap();
+        assert_eq!(node.elements.len(), 3);
+        assert_eq!(node.elements[0].key_offset, 0x4230);
+        assert_eq!(node.elements[1].key_offset, 0x4960);
+        assert_eq!(node.elements[2].key_offset, 0x55f0);
+    }
+
+    #[test]
     fn test_parse_fast_leaf() {
         let buf = vec![
             0xf0, 0xff, 0xff, 0xff, 0x6c, 0x66, 0x01, 0x00,  //  |....lf..|
@@ -338,6 +356,31 @@ fn parse_key_node<R: Read + Seek>(source: &mut R) -> std::io::Result<KeyNode> {
         key_name_length,
         class_name_length,
         key_name: std::str::from_utf8(&key_name).unwrap().to_string(),
+    })
+}
+
+
+#[derive(Debug)]
+struct IndexLeafElement {
+    key_offset: u32,
+}
+
+#[derive(Debug)]
+struct IndexLeaf {
+    elements: Vec<IndexLeafElement>,
+}
+
+fn parse_index_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<IndexLeaf> {
+    let count = source.read_u16::<LittleEndian>()?;
+    let mut elements = Vec::new();
+    for _ in 0..count {
+        let key_offset = source.read_u32::<LittleEndian>()?;
+        elements.push(IndexLeafElement {
+            key_offset,
+        });
+    }
+    Ok(IndexLeaf {
+        elements,
     })
 }
 
