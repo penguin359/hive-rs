@@ -1,9 +1,9 @@
-use std::io::Cursor;
+use std::convert::{TryFrom, TryInto};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
+use std::io::Cursor;
 use std::io::SeekFrom;
-use std::convert::{TryFrom, TryInto};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -35,28 +35,28 @@ mod tests {
         let path = "boot/BCD";
         let mut file = BufReader::new(File::open(path).unwrap());
 
-        let status = file.seek(SeekFrom::Start(4096+32));
+        let status = file.seek(SeekFrom::Start(4096 + 32));
         assert!(status.is_ok());
         let mut size = 65536;
-        let root_cell_status = load_cell(&mut file, &mut size, false);
+        let root_cell_status = load_cell(&HIVE_NEW, &mut file, &mut size, false);
         assert!(root_cell_status.is_ok());
     }
 
     #[test]
     fn test_parse_key_node() {
         let buf = vec![
-            0xa0, 0xff, 0xff, 0xff, 0x6e, 0x6b, 0x20, 0x00,  //  |....nk .|
-            0xba, 0x04, 0x00, 0x66, 0xd3, 0x4c, 0xd4, 0x01,  //  |...f.L..|
-            0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00,  //  |.... ...|
-            0x0d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  //  |........|
-            0x30, 0x05, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff,  //  |0.......|
-            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,  //  |........|
-            0x18, 0x03, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,  //  |........|
-            0x1a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  //  |........|
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  //  |........|
-            0x00, 0x00, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00,  //  |........|
-            0x43, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x20,  //  |Control |
-            0x50, 0x61, 0x6e, 0x65, 0x6c, 0x00, 0x00, 0x00,  //  |Panel...|
+            0xa0, 0xff, 0xff, 0xff, 0x6e, 0x6b, 0x20, 0x00, //  |....nk .|
+            0xba, 0x04, 0x00, 0x66, 0xd3, 0x4c, 0xd4, 0x01, //  |...f.L..|
+            0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, //  |.... ...|
+            0x0d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  |........|
+            0x30, 0x05, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, //  |0.......|
+            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, //  |........|
+            0x18, 0x03, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, //  |........|
+            0x1a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  |........|
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  |........|
+            0x00, 0x00, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00, //  |........|
+            0x43, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x20, //  |Control |
+            0x50, 0x61, 0x6e, 0x65, 0x6c, 0x00, 0x00, 0x00, //  |Panel...|
         ];
         let result = parse_key_node(&mut Cursor::new(&buf[6..]));
         assert!(result.is_ok());
@@ -86,9 +86,9 @@ mod tests {
     #[test]
     fn test_parse_hash_leaf() {
         let buf = vec![
-            0xf0, 0xff, 0xff, 0xff, 0x6c, 0x68, 0x01, 0x00,  //  |....lh..|
-            0xa8, 0x09, 0x00, 0x00, 0x82, 0x21, 0x8c, 0x70,  //  |.....!.p|
-            0xf8, 0xff, 0xff, 0xff, 0xe0, 0x2f, 0x00, 0x00,  //  |...../..|
+            0xf0, 0xff, 0xff, 0xff, 0x6c, 0x68, 0x01, 0x00, //  |....lh..|
+            0xa8, 0x09, 0x00, 0x00, 0x82, 0x21, 0x8c, 0x70, //  |.....!.p|
+            0xf8, 0xff, 0xff, 0xff, 0xe0, 0x2f, 0x00, 0x00, //  |...../..|
         ];
         let result = parse_hash_leaf(&mut Cursor::new(&buf[6..]));
         assert!(result.is_ok());
@@ -101,13 +101,13 @@ mod tests {
     #[test]
     fn test_parse_key_value() {
         let buf = vec![
-            0xc8, 0xff, 0xff, 0xff, 0x76, 0x6b, 0x1d, 0x00,  //  |....vk..|
-            0x04, 0x00, 0x00, 0x80, 0x32, 0x00, 0x00, 0x00,  //  |....2...|
-            0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0xfc, 0xcf,  //  |........|
-            0x54, 0x6f, 0x75, 0x63, 0x68, 0x4d, 0x6f, 0x64,  //  |TouchMod|
-            0x65, 0x4e, 0x5f, 0x48, 0x6f, 0x6c, 0x64, 0x54,  //  |eN_HoldT|
-            0x69, 0x6d, 0x65, 0x5f, 0x41, 0x6e, 0x69, 0x6d,  //  |ime_Anim|
-            0x61, 0x74, 0x69, 0x6f, 0x6e, 0x00, 0x00, 0x00,  //  |ation...|
+            0xc8, 0xff, 0xff, 0xff, 0x76, 0x6b, 0x1d, 0x00, //  |....vk..|
+            0x04, 0x00, 0x00, 0x80, 0x32, 0x00, 0x00, 0x00, //  |....2...|
+            0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0xfc, 0xcf, //  |........|
+            0x54, 0x6f, 0x75, 0x63, 0x68, 0x4d, 0x6f, 0x64, //  |TouchMod|
+            0x65, 0x4e, 0x5f, 0x48, 0x6f, 0x6c, 0x64, 0x54, //  |eN_HoldT|
+            0x69, 0x6d, 0x65, 0x5f, 0x41, 0x6e, 0x69, 0x6d, //  |ime_Anim|
+            0x61, 0x74, 0x69, 0x6f, 0x6e, 0x00, 0x00, 0x00, //  |ation...|
         ];
         let result = parse_key_value(&mut Cursor::new(&buf[6..]));
         assert!(result.is_ok());
@@ -125,25 +125,37 @@ mod tests {
     fn test_parse_index_leaf() {
         // This cell is in NT 3.1 Hive format 1.1
         let buf = vec![
-            0xe0, 0xff, 0xff, 0xff, 0x40, 0x08, 0x00, 0x00,  //  |....@...|
-            0x6c, 0x69, 0x03, 0x00, 0x30, 0x42, 0x00, 0x00,  //  |li..0B..|
-            0x60, 0x49, 0x00, 0x00, 0xf0, 0x55, 0x00, 0x00,  //  |`I...U..|
-            0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2,  //  |........|
+            0xe0, 0xff, 0xff, 0xff, 0x40, 0x08, 0x00, 0x00, //  |....@...|
+            0x6c, 0x69, 0x03, 0x00, 0x30, 0x42, 0x00, 0x00, //  |li..0B..|
+            0x60, 0x49, 0x00, 0x00, 0xf0, 0x55, 0x00, 0x00, //  |`I...U..|
+            0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, //  |........|
         ];
-        let result = parse_index_leaf(&mut Cursor::new(&buf[6+4..]));
+        let result = parse_index_leaf(&mut Cursor::new(&buf[6 + 4..]));
         assert!(result.is_ok());
         let node = result.unwrap();
         assert_eq!(node.elements.len(), 3);
         assert_eq!(node.elements[0].key_offset, 0x4230);
         assert_eq!(node.elements[1].key_offset, 0x4960);
         assert_eq!(node.elements[2].key_offset, 0x55f0);
+        let mut file = Cursor::new(&buf);
+        let mut size = 65536;
+        let root_cell_status = load_cell(
+            &Hive {
+                has_prev_pointer: true,
+            },
+            &mut file,
+            &mut size,
+            false,
+        );
+        println!("{:?}", root_cell_status);
+        assert!(root_cell_status.is_ok());
     }
 
     #[test]
     fn test_parse_fast_leaf() {
         let buf = vec![
-            0xf0, 0xff, 0xff, 0xff, 0x6c, 0x66, 0x01, 0x00,  //  |....lf..|
-            0x48, 0x05, 0x00, 0x00, 0x31, 0x32, 0x30, 0x30,  //  |H...1200|
+            0xf0, 0xff, 0xff, 0xff, 0x6c, 0x66, 0x01, 0x00, //  |....lf..|
+            0x48, 0x05, 0x00, 0x00, 0x31, 0x32, 0x30, 0x30, //  |H...1200|
         ];
         let result = parse_fast_leaf(&mut Cursor::new(&buf[6..]));
         assert!(result.is_ok());
@@ -156,21 +168,21 @@ mod tests {
     #[test]
     fn test_parse_key_security() {
         let buf = vec![
-            0xb8, 0x00, 0x00, 0x00, 0x73, 0x6b, 0x20, 0x00,  //  |....sk .|
-            0x80, 0x63, 0x00, 0x00, 0x68, 0x01, 0x00, 0x00,  //  |.c..h...|
-            0x01, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00,  //  |....d...|
-            0x01, 0x00, 0x04, 0x80, 0x48, 0x00, 0x00, 0x00,  //  |....H...|
-            0x58, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  //  |X.......|
-            0x14, 0x00, 0x00, 0x00, 0x02, 0x00, 0x34, 0x00,  //  |......4.|
-            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x00,  //  |........|
-            0x3f, 0x00, 0x0f, 0x00, 0x01, 0x02, 0x00, 0x00,  //  |?.......|
-            0x00, 0x00, 0x00, 0x05, 0x20, 0x00, 0x00, 0x00,  //  |.... ...|
-            0x20, 0x02, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00,  //  | .......|
-            0x3f, 0x00, 0x0f, 0x00, 0x01, 0x01, 0x00, 0x00,  //  |?.......|
-            0x00, 0x00, 0x00, 0x05, 0x12, 0x00, 0x00, 0x00,  //  |........|
-            0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,  //  |........|
-            0x20, 0x00, 0x00, 0x00, 0x20, 0x02, 0x00, 0x00,  //  | ... ...|
-            0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,  //  |........|
+            0xb8, 0x00, 0x00, 0x00, 0x73, 0x6b, 0x20, 0x00, //  |....sk .|
+            0x80, 0x63, 0x00, 0x00, 0x68, 0x01, 0x00, 0x00, //  |.c..h...|
+            0x01, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, //  |....d...|
+            0x01, 0x00, 0x04, 0x80, 0x48, 0x00, 0x00, 0x00, //  |....H...|
+            0x58, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  |X.......|
+            0x14, 0x00, 0x00, 0x00, 0x02, 0x00, 0x34, 0x00, //  |......4.|
+            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x00, //  |........|
+            0x3f, 0x00, 0x0f, 0x00, 0x01, 0x02, 0x00, 0x00, //  |?.......|
+            0x00, 0x00, 0x00, 0x05, 0x20, 0x00, 0x00, 0x00, //  |.... ...|
+            0x20, 0x02, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, //  | .......|
+            0x3f, 0x00, 0x0f, 0x00, 0x01, 0x01, 0x00, 0x00, //  |?.......|
+            0x00, 0x00, 0x00, 0x05, 0x12, 0x00, 0x00, 0x00, //  |........|
+            0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, //  |........|
+            0x20, 0x00, 0x00, 0x00, 0x20, 0x02, 0x00, 0x00, //  | ... ...|
+            0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, //  |........|
         ];
         let result = parse_key_security(&mut Cursor::new(&buf[6..]));
         assert!(result.is_ok());
@@ -178,21 +190,19 @@ mod tests {
         assert_eq!(node.flink, 0x6380);
         assert_eq!(node.blink, 0x0168);
         assert_eq!(node.reference_count, 1);
-        assert_eq!(node.descriptor.len(), 100-4);
+        assert_eq!(node.descriptor.len(), 100 - 4);
         assert_eq!(node.descriptor, &buf[24..]);
     }
 }
 
-
-
-const _INDEX_LEAF:   u16 = 'l' as u16 + 'i' as u16 * 256;  // (li) Subkeys list
-const FAST_LEAF:    u16 = 'l' as u16 + 'f' as u16 * 256;  // (lf) Subkeys list with name hints
-const _HASH_LEAF:    u16 = 'l' as u16 + 'h' as u16 * 256;  // (lh) Subkeys list with name hashes
-const _INDEX_ROOT:   u16 = 'r' as u16 + 'i' as u16 * 256;  // (ri) List of subkeys lists
-const KEY_NODE:     u16 = 'n' as u16 + 'k' as u16 * 256;  // (nk) Registry key node
-const KEY_VALUE:    u16 = 'v' as u16 + 'k' as u16 * 256;  // (vk) Registry key value
-const KEY_SECURITY: u16 = 's' as u16 + 'k' as u16 * 256;  // (sk) Security descriptor
-const _BIG_DATA:     u16 = 'd' as u16 + 'b' as u16 * 256;  // (db) List of data segments
+const INDEX_LEAF: u16 = 'l' as u16 + 'i' as u16 * 256; // (li) Subkeys list
+const FAST_LEAF: u16 = 'l' as u16 + 'f' as u16 * 256; // (lf) Subkeys list with name hints
+const _HASH_LEAF: u16 = 'l' as u16 + 'h' as u16 * 256; // (lh) Subkeys list with name hashes
+const _INDEX_ROOT: u16 = 'r' as u16 + 'i' as u16 * 256; // (ri) List of subkeys lists
+const KEY_NODE: u16 = 'n' as u16 + 'k' as u16 * 256; // (nk) Registry key node
+const KEY_VALUE: u16 = 'v' as u16 + 'k' as u16 * 256; // (vk) Registry key value
+const KEY_SECURITY: u16 = 's' as u16 + 'k' as u16 * 256; // (sk) Security descriptor
+const _BIG_DATA: u16 = 'd' as u16 + 'b' as u16 * 256; // (db) List of data segments
 
 #[derive(Debug)]
 struct KeyNode {
@@ -238,25 +248,23 @@ fn parse_hash_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<HashLeaf> 
             name_hash: source.read_u32::<LittleEndian>()?,
         });
     }
-    Ok(HashLeaf {
-        elements,
-    })
+    Ok(HashLeaf { elements })
 }
 
 #[derive(Debug, Eq, PartialEq)]
 enum DataType {
-    RegNone                      = 0x00000000,
-    RegSz                        = 0x00000001,
-    RegExpandSz                  = 0x00000002,
-    RegBinary                    = 0x00000003,
-    RegDword                     = 0x00000004,
-    RegDwordBigEndian            = 0x00000005,
-    RegLink                      = 0x00000006,
-    RegMultiSz                   = 0x00000007,
-    RegResourceList              = 0x00000008,
-    RegFullResourceDescriptor    = 0x00000009,
-    RegResourceRequirementsList  = 0x0000000a,
-    RegQword                     = 0x0000000b,
+    RegNone = 0x00000000,
+    RegSz = 0x00000001,
+    RegExpandSz = 0x00000002,
+    RegBinary = 0x00000003,
+    RegDword = 0x00000004,
+    RegDwordBigEndian = 0x00000005,
+    RegLink = 0x00000006,
+    RegMultiSz = 0x00000007,
+    RegResourceList = 0x00000008,
+    RegFullResourceDescriptor = 0x00000009,
+    RegResourceRequirementsList = 0x0000000a,
+    RegQword = 0x0000000b,
 }
 
 impl TryFrom<u32> for DataType {
@@ -264,23 +272,26 @@ impl TryFrom<u32> for DataType {
 
     fn try_from(v: u32) -> Result<Self, Self::Error> {
         match v {
-            x if x == DataType::RegNone                     as u32 => Ok(DataType::RegNone                    ),
-            x if x == DataType::RegSz                       as u32 => Ok(DataType::RegSz                      ),
-            x if x == DataType::RegExpandSz                 as u32 => Ok(DataType::RegExpandSz                ),
-            x if x == DataType::RegBinary                   as u32 => Ok(DataType::RegBinary                  ),
-            x if x == DataType::RegDword                    as u32 => Ok(DataType::RegDword                   ),
-            x if x == DataType::RegDwordBigEndian           as u32 => Ok(DataType::RegDwordBigEndian          ),
-            x if x == DataType::RegLink                     as u32 => Ok(DataType::RegLink                    ),
-            x if x == DataType::RegMultiSz                  as u32 => Ok(DataType::RegMultiSz                 ),
-            x if x == DataType::RegResourceList             as u32 => Ok(DataType::RegResourceList            ),
-            x if x == DataType::RegFullResourceDescriptor   as u32 => Ok(DataType::RegFullResourceDescriptor  ),
-            x if x == DataType::RegResourceRequirementsList as u32 => Ok(DataType::RegResourceRequirementsList),
-            x if x == DataType::RegQword                    as u32 => Ok(DataType::RegQword                   ),
+            x if x == DataType::RegNone as u32 => Ok(DataType::RegNone),
+            x if x == DataType::RegSz as u32 => Ok(DataType::RegSz),
+            x if x == DataType::RegExpandSz as u32 => Ok(DataType::RegExpandSz),
+            x if x == DataType::RegBinary as u32 => Ok(DataType::RegBinary),
+            x if x == DataType::RegDword as u32 => Ok(DataType::RegDword),
+            x if x == DataType::RegDwordBigEndian as u32 => Ok(DataType::RegDwordBigEndian),
+            x if x == DataType::RegLink as u32 => Ok(DataType::RegLink),
+            x if x == DataType::RegMultiSz as u32 => Ok(DataType::RegMultiSz),
+            x if x == DataType::RegResourceList as u32 => Ok(DataType::RegResourceList),
+            x if x == DataType::RegFullResourceDescriptor as u32 => {
+                Ok(DataType::RegFullResourceDescriptor)
+            }
+            x if x == DataType::RegResourceRequirementsList as u32 => {
+                Ok(DataType::RegResourceRequirementsList)
+            }
+            x if x == DataType::RegQword as u32 => Ok(DataType::RegQword),
             _ => Err(()),
         }
     }
 }
-
 
 #[derive(Debug)]
 struct KeyValue {
@@ -359,7 +370,6 @@ fn parse_key_node<R: Read + Seek>(source: &mut R) -> std::io::Result<KeyNode> {
     })
 }
 
-
 #[derive(Debug)]
 struct IndexLeafElement {
     key_offset: u32,
@@ -375,15 +385,10 @@ fn parse_index_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<IndexLeaf
     let mut elements = Vec::new();
     for _ in 0..count {
         let key_offset = source.read_u32::<LittleEndian>()?;
-        elements.push(IndexLeafElement {
-            key_offset,
-        });
+        elements.push(IndexLeafElement { key_offset });
     }
-    Ok(IndexLeaf {
-        elements,
-    })
+    Ok(IndexLeaf { elements })
 }
-
 
 #[derive(Debug)]
 struct FastLeafElement {
@@ -409,11 +414,8 @@ fn parse_fast_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<FastLeaf> 
             name_hint,
         });
     }
-    Ok(FastLeaf {
-        elements,
-    })
+    Ok(FastLeaf { elements })
 }
-
 
 #[derive(Debug)]
 struct KeySecurity {
@@ -440,6 +442,13 @@ fn parse_key_security<R: Read + Seek>(source: &mut R) -> std::io::Result<KeySecu
     })
 }
 
+struct Hive {
+    has_prev_pointer: bool,
+}
+
+const HIVE_NEW: Hive = Hive {
+    has_prev_pointer: false,
+};
 
 #[derive(Debug)]
 struct Raw {
@@ -450,54 +459,64 @@ struct Raw {
 enum Cell {
     KeyNode(KeyNode),
     KeyValue(KeyValue),
+    IndexLeaf(IndexLeaf),
     FastLeaf(FastLeaf),
     KeySecurity(KeySecurity),
     Raw(Raw),
 }
 
-fn load_cell<R: Read + Seek>(source: &mut R, size: &mut u32, raw: bool) -> std::io::Result<Cell> {
+fn load_cell<R: Read + Seek>(
+    hive: &Hive,
+    source: &mut R,
+    size: &mut u32,
+    raw: bool,
+) -> std::io::Result<Cell> {
+    let mut cell_header_size = 4;
     let cell_size = source.read_i32::<LittleEndian>()?;
     assert!((cell_size.abs() & 0x07) == 0);
     *size -= cell_size.abs() as u32;
     if cell_size > 0 {
         println!("Cell unallocated");
         source.seek(SeekFrom::Current(cell_size.abs() as i64 - 6))?;
-        return Err(::std::io::Error::new(::std::io::ErrorKind::Other, "Empty cell"));
+        return Err(::std::io::Error::new(
+            ::std::io::ErrorKind::Other,
+            "Empty cell",
+        ));
+    }
+    if hive.has_prev_pointer {
+        cell_header_size += 4;
+        let _prev = source.read_i32::<LittleEndian>()?;
     }
     println!("Cell size: {}", cell_size.abs());
     if raw {
         let mut buf = vec![0u8; cell_size.abs() as usize - 4];
         source.read_exact(&mut buf)?;
-        return Ok(Cell::Raw(Raw {
-            data: buf,
-        }));
+        return Ok(Cell::Raw(Raw { data: buf }));
     }
     let mut key = [0u8; 2];
     source.read_exact(&mut key)?;
     println!("Cell raw: {:?}", &key);
     println!("Cell key: {:?}", std::str::from_utf8(&key));
+    cell_header_size += 2;
     let cell_magic = key[0] as u16 + key[1] as u16 * 256;
-    let mut _buf = vec![0u8; cell_size.abs() as usize - 6];
-    source.read_exact(&mut _buf)?;
+    let mut buf = vec![0u8; cell_size.abs() as usize - cell_header_size];
+    source.read_exact(&mut buf)?;
     let cell = match cell_magic {
-        KEY_NODE =>
-            Cell::KeyNode(parse_key_node(&mut Cursor::new(_buf))?)
-        ,
-        KEY_VALUE =>
-            Cell::KeyValue(parse_key_value(&mut Cursor::new(_buf))?)
-        ,
-        FAST_LEAF =>
-            Cell::FastLeaf(parse_fast_leaf(&mut Cursor::new(_buf))?)
-        ,
-        KEY_SECURITY =>
-            Cell::KeySecurity(parse_key_security(&mut Cursor::new(_buf))?)
-        ,
-        _ => { return Err(::std::io::Error::new(::std::io::ErrorKind::Other, "Unknown cell")); },
+        KEY_NODE => Cell::KeyNode(parse_key_node(&mut Cursor::new(buf))?),
+        KEY_VALUE => Cell::KeyValue(parse_key_value(&mut Cursor::new(buf))?),
+        INDEX_LEAF => Cell::IndexLeaf(parse_index_leaf(&mut Cursor::new(buf))?),
+        FAST_LEAF => Cell::FastLeaf(parse_fast_leaf(&mut Cursor::new(buf))?),
+        KEY_SECURITY => Cell::KeySecurity(parse_key_security(&mut Cursor::new(buf))?),
+        _ => {
+            return Err(::std::io::Error::new(
+                ::std::io::ErrorKind::Other,
+                "Unknown cell",
+            ));
+        }
     };
 
     return Ok(cell);
 }
-
 
 struct BaseBlock {
     primary_seq: u32,
@@ -526,8 +545,14 @@ fn load_base_block<R: Read + Seek>(source: &mut R) -> std::io::Result<BaseBlock>
     let root_cell_offset = source.read_u32::<LittleEndian>().unwrap();
     let hive_data_size = source.read_u32::<LittleEndian>().unwrap();
     let clustering_factor = source.read_u32::<LittleEndian>().unwrap();
-    println!("P: {}, S: {}, LM: {}", primary_seq, secondary_seq, last_modified);
-    println!("({}, {}) -> {} - {}", major_ver, minor_ver, file_type, file_format);
+    println!(
+        "P: {}, S: {}, LM: {}",
+        primary_seq, secondary_seq, last_modified
+    );
+    println!(
+        "({}, {}) -> {} - {}",
+        major_ver, minor_ver, file_type, file_format
+    );
     println!("Root Cell Offset: {}", root_cell_offset);
     println!("Hive Data: {}", hive_data_size);
     println!("Clustering Factor: {}", clustering_factor);
@@ -551,27 +576,33 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
     source.seek(SeekFrom::Start(offset + 4096)).unwrap();
     let mut size = 65536;
     println!("KN Offset: {}", offset);
-    let cell = load_cell(source, &mut size, false).unwrap();
+    let cell = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
     println!("{:?}", cell);
     match cell {
         Cell::KeyNode(node) => {
             if node.number_subkeys > 0 {
-                source.seek(SeekFrom::Start(node.subkey_list_offset as u64 + 4096)).unwrap();
-                let subkey = load_cell(source, &mut size, false).unwrap();
+                source
+                    .seek(SeekFrom::Start(node.subkey_list_offset as u64 + 4096))
+                    .unwrap();
+                let subkey = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
                 println!("{:?}", subkey);
                 match subkey {
                     Cell::FastLeaf(child) => {
                         for offset in child.elements {
                             dump_key_node(source, offset.key_offset as u64);
                         }
-                    },
-                    _ => { panic!("Unknown child"); },
+                    }
+                    _ => {
+                        panic!("Unknown child");
+                    }
                 }
             }
             if node.key_value_count > 0 {
                 println!("KV List Offset: {:x}", node.key_value_offset as u64 + 4096);
-                source.seek(SeekFrom::Start(node.key_value_offset as u64 + 4096)).unwrap();
-                let key_value_list = load_cell(source, &mut size, true).unwrap();
+                source
+                    .seek(SeekFrom::Start(node.key_value_offset as u64 + 4096))
+                    .unwrap();
+                let key_value_list = load_cell(&HIVE_NEW, source, &mut size, true).unwrap();
                 match key_value_list {
                     Cell::Raw(value) => {
                         let mut cursor = Cursor::new(&value.data[..]);
@@ -579,7 +610,7 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
                             size = 65536;
                             let offset = cursor.read_u32::<LittleEndian>().unwrap();
                             source.seek(SeekFrom::Start(offset as u64 + 4096)).unwrap();
-                            let key_value = load_cell(source, &mut size, false).unwrap();
+                            let key_value = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
                             println!("{:?}", key_value);
                             match key_value {
                                 Cell::KeyValue(child) => {
@@ -587,26 +618,40 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
                                         if child.data_size & 0x80000000 != 0 {
                                             println!("Data: {:?}", child.data_offset);
                                         } else {
-                                            source.seek(SeekFrom::Start(child.data_offset as u64 + 4096)).unwrap();
-                                            let data_value = load_cell(source, &mut size, true).unwrap();
+                                            source
+                                                .seek(SeekFrom::Start(
+                                                    child.data_offset as u64 + 4096,
+                                                ))
+                                                .unwrap();
+                                            let data_value =
+                                                load_cell(&HIVE_NEW, source, &mut size, true)
+                                                    .unwrap();
                                             match data_value {
                                                 Cell::Raw(n) => {
                                                     println!("Data: {:?}", n.data);
-                                                },
-                                                _ => { panic!("Unknown child"); },
+                                                }
+                                                _ => {
+                                                    panic!("Unknown child");
+                                                }
                                             }
                                         }
                                     }
-                                },
-                                _ => { panic!("Unknown child"); },
+                                }
+                                _ => {
+                                    panic!("Unknown child");
+                                }
                             }
                         }
-                    },
-                    _ => { panic!("Unknown child"); },
+                    }
+                    _ => {
+                        panic!("Unknown child");
+                    }
                 }
             }
-        },
-        _ => { panic!("Wrong type"); },
+        }
+        _ => {
+            panic!("Wrong type");
+        }
     }
 }
 
@@ -627,15 +672,15 @@ fn main() {
     println!("Bin size: {}", size);
     size -= 32;
     while size > 0 {
-//    let cell_size = file.read_i32::<LittleEndian>().unwrap();
-//    assert!((cell_size.abs() & 0x07) == 0);
-//    let mut key = [0u8; 2];
-//    file.read_exact(&mut key).unwrap();
-//    //assert_eq!(&magic, b"hbin");
-//    println!("Cell raw: {:?}", &key);
-//    println!("Cell key: {:?}", std::str::from_utf8(&key));
-//    file.seek(SeekFrom::Current(cell_size.abs() as i64 - 6));
-      load_cell(&mut file, &mut size, false).ok();
+        //    let cell_size = file.read_i32::<LittleEndian>().unwrap();
+        //    assert!((cell_size.abs() & 0x07) == 0);
+        //    let mut key = [0u8; 2];
+        //    file.read_exact(&mut key).unwrap();
+        //    //assert_eq!(&magic, b"hbin");
+        //    println!("Cell raw: {:?}", &key);
+        //    println!("Cell key: {:?}", std::str::from_utf8(&key));
+        //    file.seek(SeekFrom::Current(cell_size.abs() as i64 - 6));
+        load_cell(&HIVE_NEW, &mut file, &mut size, false).ok();
     }
     dump_key_node(&mut file, base_block.root_cell_offset as u64);
 }
