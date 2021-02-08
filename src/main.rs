@@ -84,21 +84,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_hash_leaf() {
-        let buf = vec![
-            0xf0, 0xff, 0xff, 0xff, 0x6c, 0x68, 0x01, 0x00, //  |....lh..|
-            0xa8, 0x09, 0x00, 0x00, 0x82, 0x21, 0x8c, 0x70, //  |.....!.p|
-            0xf8, 0xff, 0xff, 0xff, 0xe0, 0x2f, 0x00, 0x00, //  |...../..|
-        ];
-        let result = parse_hash_leaf(&mut Cursor::new(&buf[6..]));
-        assert!(result.is_ok());
-        let node = result.unwrap();
-        assert_eq!(node.elements.len(), 1);
-        assert_eq!(node.elements[0].key_offset, 0x000009a8);
-        assert_eq!(node.elements[0].name_hash, 0x708c2182);
-    }
-
-    #[test]
     fn test_parse_key_value() {
         let buf = vec![
             0xc8, 0xff, 0xff, 0xff, 0x76, 0x6b, 0x1d, 0x00, //  |....vk..|
@@ -115,7 +100,7 @@ mod tests {
         assert_eq!(node.name.len(), 29);
         assert_eq!(node.data_size, 0x80000004);
         assert_eq!(node.data_offset, 50);
-        assert_eq!(node.data_type, DataType::RegDword);
+        assert_eq!(node.data_type, RegType::Dword);
         assert_eq!(node.flags, 0x0001);
         assert_eq!(node.spare, 0xcffc);
         assert_eq!(node.name, "TouchModeN_HoldTime_Animation");
@@ -130,16 +115,9 @@ mod tests {
             0x60, 0x49, 0x00, 0x00, 0xf0, 0x55, 0x00, 0x00, //  |`I...U..|
             0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, //  |........|
         ];
-        let result = parse_index_leaf(&mut Cursor::new(&buf[6 + 4..]));
-        assert!(result.is_ok());
-        let node = result.unwrap();
-        assert_eq!(node.elements.len(), 3);
-        assert_eq!(node.elements[0].key_offset, 0x4230);
-        assert_eq!(node.elements[1].key_offset, 0x4960);
-        assert_eq!(node.elements[2].key_offset, 0x55f0);
         let mut file = Cursor::new(&buf);
         let mut size = 65536;
-        let root_cell_status = load_cell(
+        let result = load_cell(
             &Hive {
                 has_prev_pointer: true,
             },
@@ -147,8 +125,17 @@ mod tests {
             &mut size,
             false,
         );
-        println!("{:?}", root_cell_status);
-        assert!(root_cell_status.is_ok());
+        assert!(result.is_ok());
+        let node = match result.unwrap() {
+            Cell::IndexLeaf(x) => x,
+            _ => {
+                panic!("Incorrect cell type");
+            }
+        };
+        assert_eq!(node.elements.len(), 3);
+        assert_eq!(node.elements[0].key_offset, 0x4230);
+        assert_eq!(node.elements[1].key_offset, 0x4960);
+        assert_eq!(node.elements[2].key_offset, 0x55f0);
     }
 
     #[test]
@@ -157,12 +144,41 @@ mod tests {
             0xf0, 0xff, 0xff, 0xff, 0x6c, 0x66, 0x01, 0x00, //  |....lf..|
             0x48, 0x05, 0x00, 0x00, 0x31, 0x32, 0x30, 0x30, //  |H...1200|
         ];
-        let result = parse_fast_leaf(&mut Cursor::new(&buf[6..]));
+        let mut file = Cursor::new(&buf);
+        let mut size = 65536;
+        let result = load_cell(&HIVE_NEW, &mut file, &mut size, false);
         assert!(result.is_ok());
-        let node = result.unwrap();
+        let node = match result.unwrap() {
+            Cell::FastLeaf(x) => x,
+            _ => {
+                panic!("Incorrect cell type");
+            }
+        };
         assert_eq!(node.elements.len(), 1);
         assert_eq!(node.elements[0].key_offset, 0x0548);
         assert_eq!(node.elements[0].name_hint, *b"1200");
+    }
+
+    #[test]
+    fn test_parse_hash_leaf() {
+        let buf = vec![
+            0xf0, 0xff, 0xff, 0xff, 0x6c, 0x68, 0x01, 0x00, //  |....lh..|
+            0xa8, 0x09, 0x00, 0x00, 0x82, 0x21, 0x8c, 0x70, //  |.....!.p|
+            0xf8, 0xff, 0xff, 0xff, 0xe0, 0x2f, 0x00, 0x00, //  |...../..|
+        ];
+        let mut file = Cursor::new(&buf);
+        let mut size = 65536;
+        let result = load_cell(&HIVE_NEW, &mut file, &mut size, false);
+        assert!(result.is_ok());
+        let node = match result.unwrap() {
+            Cell::HashLeaf(x) => x,
+            _ => {
+                panic!("Incorrect cell type");
+            }
+        };
+        assert_eq!(node.elements.len(), 1);
+        assert_eq!(node.elements[0].key_offset, 0x000009a8);
+        assert_eq!(node.elements[0].name_hash, 0x708c2182);
     }
 
     #[test]
@@ -197,7 +213,7 @@ mod tests {
 
 const INDEX_LEAF: u16 = 'l' as u16 + 'i' as u16 * 256; // (li) Subkeys list
 const FAST_LEAF: u16 = 'l' as u16 + 'f' as u16 * 256; // (lf) Subkeys list with name hints
-const _HASH_LEAF: u16 = 'l' as u16 + 'h' as u16 * 256; // (lh) Subkeys list with name hashes
+const HASH_LEAF: u16 = 'l' as u16 + 'h' as u16 * 256; // (lh) Subkeys list with name hashes
 const _INDEX_ROOT: u16 = 'r' as u16 + 'i' as u16 * 256; // (ri) List of subkeys lists
 const KEY_NODE: u16 = 'n' as u16 + 'k' as u16 * 256; // (nk) Registry key node
 const KEY_VALUE: u16 = 'v' as u16 + 'k' as u16 * 256; // (vk) Registry key value
@@ -228,66 +244,41 @@ struct KeyNode {
     key_name: String,
 }
 
-#[derive(Debug)]
-struct NameHash {
-    key_offset: u32,
-    name_hash: u32,
-}
-
-#[derive(Debug)]
-struct HashLeaf {
-    elements: Vec<NameHash>,
-}
-
-fn parse_hash_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<HashLeaf> {
-    let count = source.read_u16::<LittleEndian>()?;
-    let mut elements = vec![];
-    for _ in 0..count {
-        elements.push(NameHash {
-            key_offset: source.read_u32::<LittleEndian>()?,
-            name_hash: source.read_u32::<LittleEndian>()?,
-        });
-    }
-    Ok(HashLeaf { elements })
-}
-
 #[derive(Debug, Eq, PartialEq)]
-enum DataType {
-    RegNone = 0x00000000,
-    RegSz = 0x00000001,
-    RegExpandSz = 0x00000002,
-    RegBinary = 0x00000003,
-    RegDword = 0x00000004,
-    RegDwordBigEndian = 0x00000005,
-    RegLink = 0x00000006,
-    RegMultiSz = 0x00000007,
-    RegResourceList = 0x00000008,
-    RegFullResourceDescriptor = 0x00000009,
-    RegResourceRequirementsList = 0x0000000a,
-    RegQword = 0x0000000b,
+enum RegType {
+    None = 0x00000000,
+    Sz = 0x00000001,
+    ExpandSz = 0x00000002,
+    Binary = 0x00000003,
+    Dword = 0x00000004,
+    DwordBigEndian = 0x00000005,
+    Link = 0x00000006,
+    MultiSz = 0x00000007,
+    ResourceList = 0x00000008,
+    FullResourceDescriptor = 0x00000009,
+    ResourceRequirementsList = 0x0000000a,
+    Qword = 0x0000000b,
 }
 
-impl TryFrom<u32> for DataType {
+impl TryFrom<u32> for RegType {
     type Error = ();
 
     fn try_from(v: u32) -> Result<Self, Self::Error> {
         match v {
-            x if x == DataType::RegNone as u32 => Ok(DataType::RegNone),
-            x if x == DataType::RegSz as u32 => Ok(DataType::RegSz),
-            x if x == DataType::RegExpandSz as u32 => Ok(DataType::RegExpandSz),
-            x if x == DataType::RegBinary as u32 => Ok(DataType::RegBinary),
-            x if x == DataType::RegDword as u32 => Ok(DataType::RegDword),
-            x if x == DataType::RegDwordBigEndian as u32 => Ok(DataType::RegDwordBigEndian),
-            x if x == DataType::RegLink as u32 => Ok(DataType::RegLink),
-            x if x == DataType::RegMultiSz as u32 => Ok(DataType::RegMultiSz),
-            x if x == DataType::RegResourceList as u32 => Ok(DataType::RegResourceList),
-            x if x == DataType::RegFullResourceDescriptor as u32 => {
-                Ok(DataType::RegFullResourceDescriptor)
+            x if x == RegType::None as u32 => Ok(RegType::None),
+            x if x == RegType::Sz as u32 => Ok(RegType::Sz),
+            x if x == RegType::ExpandSz as u32 => Ok(RegType::ExpandSz),
+            x if x == RegType::Binary as u32 => Ok(RegType::Binary),
+            x if x == RegType::Dword as u32 => Ok(RegType::Dword),
+            x if x == RegType::DwordBigEndian as u32 => Ok(RegType::DwordBigEndian),
+            x if x == RegType::Link as u32 => Ok(RegType::Link),
+            x if x == RegType::MultiSz as u32 => Ok(RegType::MultiSz),
+            x if x == RegType::ResourceList as u32 => Ok(RegType::ResourceList),
+            x if x == RegType::FullResourceDescriptor as u32 => Ok(RegType::FullResourceDescriptor),
+            x if x == RegType::ResourceRequirementsList as u32 => {
+                Ok(RegType::ResourceRequirementsList)
             }
-            x if x == DataType::RegResourceRequirementsList as u32 => {
-                Ok(DataType::RegResourceRequirementsList)
-            }
-            x if x == DataType::RegQword as u32 => Ok(DataType::RegQword),
+            x if x == RegType::Qword as u32 => Ok(RegType::Qword),
             _ => Err(()),
         }
     }
@@ -297,7 +288,7 @@ impl TryFrom<u32> for DataType {
 struct KeyValue {
     data_size: u32,
     data_offset: u32,
-    data_type: DataType,
+    data_type: RegType,
     flags: u16,
     spare: u16,
     name: String,
@@ -418,6 +409,29 @@ fn parse_fast_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<FastLeaf> 
 }
 
 #[derive(Debug)]
+struct HashLeafElement {
+    key_offset: u32,
+    name_hash: u32,
+}
+
+#[derive(Debug)]
+struct HashLeaf {
+    elements: Vec<HashLeafElement>,
+}
+
+fn parse_hash_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<HashLeaf> {
+    let count = source.read_u16::<LittleEndian>()?;
+    let mut elements = vec![];
+    for _ in 0..count {
+        elements.push(HashLeafElement {
+            key_offset: source.read_u32::<LittleEndian>()?,
+            name_hash: source.read_u32::<LittleEndian>()?,
+        });
+    }
+    Ok(HashLeaf { elements })
+}
+
+#[derive(Debug)]
 struct KeySecurity {
     flink: u32,
     blink: u32,
@@ -461,6 +475,7 @@ enum Cell {
     KeyValue(KeyValue),
     IndexLeaf(IndexLeaf),
     FastLeaf(FastLeaf),
+    HashLeaf(HashLeaf),
     KeySecurity(KeySecurity),
     Raw(Raw),
 }
@@ -506,6 +521,7 @@ fn load_cell<R: Read + Seek>(
         KEY_VALUE => Cell::KeyValue(parse_key_value(&mut Cursor::new(buf))?),
         INDEX_LEAF => Cell::IndexLeaf(parse_index_leaf(&mut Cursor::new(buf))?),
         FAST_LEAF => Cell::FastLeaf(parse_fast_leaf(&mut Cursor::new(buf))?),
+        HASH_LEAF => Cell::HashLeaf(parse_hash_leaf(&mut Cursor::new(buf))?),
         KEY_SECURITY => Cell::KeySecurity(parse_key_security(&mut Cursor::new(buf))?),
         _ => {
             return Err(::std::io::Error::new(
@@ -515,9 +531,10 @@ fn load_cell<R: Read + Seek>(
         }
     };
 
-    return Ok(cell);
+    Ok(cell)
 }
 
+#[allow(dead_code)]
 struct BaseBlock {
     primary_seq: u32,
     secondary_seq: u32,
@@ -592,6 +609,11 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
                             dump_key_node(source, offset.key_offset as u64);
                         }
                     }
+                    Cell::HashLeaf(child) => {
+                        for offset in child.elements {
+                            dump_key_node(source, offset.key_offset as u64);
+                        }
+                    }
                     _ => {
                         panic!("Unknown child");
                     }
@@ -656,7 +678,7 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
 }
 
 fn main() {
-    let path = std::env::args().skip(1).nth(0).unwrap();
+    let path = std::env::args().skip(1).next().unwrap();
     let mut file = BufReader::new(File::open(path).unwrap());
 
     let base_block = load_base_block(&mut file).unwrap();
