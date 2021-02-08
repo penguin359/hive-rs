@@ -6,6 +6,8 @@ use std::io::Cursor;
 use std::io::SeekFrom;
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use encoding::all::ISO_8859_1;
+use encoding::{DecoderTrap, Encoding};
 
 #[cfg(test)]
 mod tests {
@@ -310,7 +312,7 @@ fn parse_key_value<R: Read + Seek>(source: &mut R) -> std::io::Result<KeyValue> 
         data_type: data_type.try_into().unwrap(),
         flags,
         spare,
-        name: std::str::from_utf8(&name).unwrap().to_string(),
+        name: ISO_8859_1.decode(&name, DecoderTrap::Strict).unwrap(),
     })
 }
 
@@ -336,7 +338,11 @@ fn parse_key_node<R: Read + Seek>(source: &mut R) -> std::io::Result<KeyNode> {
     let class_name_length = source.read_u16::<LittleEndian>()?;
     let mut key_name = vec![0u8; key_name_length as usize];
     source.read_exact(&mut key_name)?;
-    println!("Key: {:?}", std::str::from_utf8(&key_name));
+    //println!("Key: {:?}", std::str::from_utf8(&key_name));
+    println!(
+        "Key: {:?}",
+        ISO_8859_1.decode(&key_name, DecoderTrap::Strict)
+    );
     Ok(KeyNode {
         flags,
         last_written,
@@ -357,7 +363,7 @@ fn parse_key_node<R: Read + Seek>(source: &mut R) -> std::io::Result<KeyNode> {
         workvar,
         key_name_length,
         class_name_length,
-        key_name: std::str::from_utf8(&key_name).unwrap().to_string(),
+        key_name: ISO_8859_1.decode(&key_name, DecoderTrap::Strict).unwrap(),
     })
 }
 
@@ -374,6 +380,7 @@ struct IndexLeaf {
 fn parse_index_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<IndexLeaf> {
     let count = source.read_u16::<LittleEndian>()?;
     let mut elements = Vec::new();
+    println!("Number of leaves: {}", count);
     for _ in 0..count {
         let key_offset = source.read_u32::<LittleEndian>()?;
         elements.push(IndexLeafElement { key_offset });
@@ -395,6 +402,7 @@ struct FastLeaf {
 fn parse_fast_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<FastLeaf> {
     let count = source.read_u16::<LittleEndian>()?;
     let mut elements = Vec::new();
+    println!("Number of leaves: {}", count);
     for _ in 0..count {
         let key_offset = source.read_u32::<LittleEndian>()?;
         let mut name_hint = [0u8; 4];
@@ -422,6 +430,7 @@ struct HashLeaf {
 fn parse_hash_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<HashLeaf> {
     let count = source.read_u16::<LittleEndian>()?;
     let mut elements = vec![];
+    println!("Number of leaves: {}", count);
     for _ in 0..count {
         elements.push(HashLeafElement {
             key_offset: source.read_u32::<LittleEndian>()?,
@@ -591,7 +600,7 @@ fn load_base_block<R: Read + Seek>(source: &mut R) -> std::io::Result<BaseBlock>
 
 fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
     source.seek(SeekFrom::Start(offset + 4096)).unwrap();
-    let mut size = 65536;
+    let mut size = 655360;
     println!("KN Offset: {}", offset);
     let cell = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
     println!("{:?}", cell);
@@ -601,6 +610,7 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
                 source
                     .seek(SeekFrom::Start(node.subkey_list_offset as u64 + 4096))
                     .unwrap();
+                size = 655360;
                 let subkey = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
                 println!("{:?}", subkey);
                 match subkey {
@@ -624,12 +634,13 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
                 source
                     .seek(SeekFrom::Start(node.key_value_offset as u64 + 4096))
                     .unwrap();
+                size = 655360;
                 let key_value_list = load_cell(&HIVE_NEW, source, &mut size, true).unwrap();
                 match key_value_list {
                     Cell::Raw(value) => {
                         let mut cursor = Cursor::new(&value.data[..]);
                         for _ in 0..node.key_value_count {
-                            size = 65536;
+                            size = 655360;
                             let offset = cursor.read_u32::<LittleEndian>().unwrap();
                             source.seek(SeekFrom::Start(offset as u64 + 4096)).unwrap();
                             let key_value = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
@@ -678,7 +689,7 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
 }
 
 fn main() {
-    let path = std::env::args().skip(1).next().unwrap();
+    let path = std::env::args().nth(1).unwrap();
     let mut file = BufReader::new(File::open(path).unwrap());
 
     let base_block = load_base_block(&mut file).unwrap();
