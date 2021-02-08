@@ -184,6 +184,41 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_index_root() {
+        let buf = vec![
+            0x80, 0xff, 0xff, 0xff, 0x72, 0x69, 0x1e, 0x00, //  |....ri..|
+            0x20, 0xb0, 0x12, 0x00, 0x20, 0xf0, 0x26, 0x00, //  | ... .&.|
+            0x20, 0xf0, 0x27, 0x00, 0x20, 0xf0, 0x28, 0x00, //  | .'. .(.|
+            0x20, 0xf0, 0x29, 0x00, 0x20, 0xf0, 0x2a, 0x00, //  | .). .*.|
+            0x20, 0xf0, 0x2b, 0x00, 0x20, 0xf0, 0x2c, 0x00, //  | .+. .,.|
+            0x20, 0x00, 0x2e, 0x00, 0x20, 0x30, 0x15, 0x00, //  | ... 0..|
+            0x20, 0xf0, 0x2f, 0x00, 0x20, 0xf0, 0x30, 0x00, //  | ./. .0.|
+            0x20, 0xf0, 0x31, 0x00, 0x20, 0x30, 0x16, 0x00, //  | .1. 0..|
+            0x20, 0x30, 0x17, 0x00, 0x20, 0x30, 0x18, 0x00, //  | 0.. 0..|
+            0x20, 0x30, 0x19, 0x00, 0x20, 0x30, 0x1a, 0x00, //  | 0.. 0..|
+            0x20, 0x30, 0x1b, 0x00, 0x20, 0x30, 0x1c, 0x00, //  | 0.. 0..|
+            0x20, 0xf0, 0x1c, 0x00, 0x20, 0xf0, 0x1d, 0x00, //  | ... ...|
+            0x20, 0xf0, 0x1e, 0x00, 0x20, 0xf0, 0x1f, 0x00, //  | ... ...|
+            0x20, 0xf0, 0x20, 0x00, 0x20, 0xf0, 0x21, 0x00, //  | . . .!.|
+            0x20, 0xf0, 0x22, 0x00, 0x20, 0xf0, 0x23, 0x00, //  | .". .#.|
+            0x20, 0xf0, 0x24, 0x00, 0x78, 0x60, 0x25, 0x00, //  | .$.x`%.|
+        ];
+        let mut file = Cursor::new(&buf);
+        let mut size = buf.len() as u32;
+        let result = load_cell(&HIVE_NEW, &mut file, &mut size, false);
+        assert!(result.is_ok());
+        let node = match result.unwrap() {
+            Cell::IndexRoot(x) => x,
+            _ => {
+                panic!("Incorrect cell type");
+            }
+        };
+        assert_eq!(node.elements.len(), 30);
+        assert_eq!(node.elements[0], 0x12b020);
+        assert_eq!(node.elements[29], 0x256078);
+    }
+
+    #[test]
     fn test_parse_key_security() {
         let buf = vec![
             0xb8, 0x00, 0x00, 0x00, 0x73, 0x6b, 0x20, 0x00, //  |....sk .|
@@ -216,7 +251,7 @@ mod tests {
 const INDEX_LEAF: u16 = 'l' as u16 + 'i' as u16 * 256; // (li) Subkeys list
 const FAST_LEAF: u16 = 'l' as u16 + 'f' as u16 * 256; // (lf) Subkeys list with name hints
 const HASH_LEAF: u16 = 'l' as u16 + 'h' as u16 * 256; // (lh) Subkeys list with name hashes
-const _INDEX_ROOT: u16 = 'r' as u16 + 'i' as u16 * 256; // (ri) List of subkeys lists
+const INDEX_ROOT: u16 = 'r' as u16 + 'i' as u16 * 256; // (ri) List of subkeys lists
 const KEY_NODE: u16 = 'n' as u16 + 'k' as u16 * 256; // (nk) Registry key node
 const KEY_VALUE: u16 = 'v' as u16 + 'k' as u16 * 256; // (vk) Registry key value
 const KEY_SECURITY: u16 = 's' as u16 + 'k' as u16 * 256; // (sk) Security descriptor
@@ -441,6 +476,22 @@ fn parse_hash_leaf<R: Read + Seek>(source: &mut R) -> std::io::Result<HashLeaf> 
 }
 
 #[derive(Debug)]
+struct IndexRoot {
+    elements: Vec<u32>,
+}
+
+fn parse_index_root<R: Read + Seek>(source: &mut R) -> std::io::Result<IndexRoot> {
+    let count = source.read_u16::<LittleEndian>()?;
+    let mut elements = Vec::new();
+    println!("Number of indices: {}", count);
+    for _ in 0..count {
+        let key_offset = source.read_u32::<LittleEndian>()?;
+        elements.push(key_offset);
+    }
+    Ok(IndexRoot { elements })
+}
+
+#[derive(Debug)]
 struct KeySecurity {
     flink: u32,
     blink: u32,
@@ -485,6 +536,7 @@ enum Cell {
     IndexLeaf(IndexLeaf),
     FastLeaf(FastLeaf),
     HashLeaf(HashLeaf),
+    IndexRoot(IndexRoot),
     KeySecurity(KeySecurity),
     Raw(Raw),
 }
@@ -531,6 +583,7 @@ fn load_cell<R: Read + Seek>(
         INDEX_LEAF => Cell::IndexLeaf(parse_index_leaf(&mut Cursor::new(buf))?),
         FAST_LEAF => Cell::FastLeaf(parse_fast_leaf(&mut Cursor::new(buf))?),
         HASH_LEAF => Cell::HashLeaf(parse_hash_leaf(&mut Cursor::new(buf))?),
+        INDEX_ROOT => Cell::IndexRoot(parse_index_root(&mut Cursor::new(buf))?),
         KEY_SECURITY => Cell::KeySecurity(parse_key_security(&mut Cursor::new(buf))?),
         _ => {
             return Err(::std::io::Error::new(
@@ -598,6 +651,29 @@ fn load_base_block<R: Read + Seek>(source: &mut R) -> std::io::Result<BaseBlock>
     })
 }
 
+fn dump_children<R: Read + Seek>(source: &mut R, subkey: Cell) {
+    match subkey {
+        Cell::IndexLeaf(child) => {
+            for offset in child.elements {
+                dump_key_node(source, offset.key_offset as u64);
+            }
+        }
+        Cell::FastLeaf(child) => {
+            for offset in child.elements {
+                dump_key_node(source, offset.key_offset as u64);
+            }
+        }
+        Cell::HashLeaf(child) => {
+            for offset in child.elements {
+                dump_key_node(source, offset.key_offset as u64);
+            }
+        }
+        _ => {
+            panic!("Unknown child");
+        }
+    }
+}
+
 fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
     source.seek(SeekFrom::Start(offset + 4096)).unwrap();
     let mut size = 655360;
@@ -614,18 +690,17 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
                 let subkey = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
                 println!("{:?}", subkey);
                 match subkey {
-                    Cell::FastLeaf(child) => {
+                    Cell::IndexRoot(child) => {
                         for offset in child.elements {
-                            dump_key_node(source, offset.key_offset as u64);
+                            source.seek(SeekFrom::Start(offset as u64 + 4096)).unwrap();
+                            size = 655360;
+                            let subkey = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
+                            println!("{:?}", subkey);
+                            dump_children(source, subkey);
                         }
                     }
-                    Cell::HashLeaf(child) => {
-                        for offset in child.elements {
-                            dump_key_node(source, offset.key_offset as u64);
-                        }
-                    }
-                    _ => {
-                        panic!("Unknown child");
+                    child => {
+                        dump_children(source, child);
                     }
                 }
             }
