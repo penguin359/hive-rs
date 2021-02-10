@@ -597,6 +597,7 @@ fn load_cell<R: Read + Seek>(
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 struct BaseBlock {
     primary_seq: u32,
     secondary_seq: u32,
@@ -778,6 +779,7 @@ fn main() {
     let _timestamp = file.read_u64::<LittleEndian>().unwrap();
     let _spare = file.read_u32::<LittleEndian>().unwrap();
     println!("Bin size: {}", size);
+    println!("Hive: {:?}", base_block);
     size -= 32;
     while size > 0 {
         //    let cell_size = file.read_i32::<LittleEndian>().unwrap();
