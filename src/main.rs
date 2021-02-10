@@ -40,7 +40,7 @@ mod tests {
         let status = file.seek(SeekFrom::Start(4096 + 32));
         assert!(status.is_ok());
         let mut size = 65536;
-        let root_cell_status = load_cell(&HIVE_NEW, &mut file, &mut size, false);
+        let root_cell_status = load_cell(&HIVE_NEW, &mut file, 32, &mut size, false);
         assert!(root_cell_status.is_ok());
     }
 
@@ -111,12 +111,14 @@ mod tests {
     #[test]
     fn test_parse_index_leaf() {
         // This cell is in NT 3.1 Hive format 1.1
-        let buf = vec![
+        let mut buf = vec![0u8; 4096];
+        let mut data = vec![
             0xe0, 0xff, 0xff, 0xff, 0x40, 0x08, 0x00, 0x00, //  |....@...|
             0x6c, 0x69, 0x03, 0x00, 0x30, 0x42, 0x00, 0x00, //  |li..0B..|
             0x60, 0x49, 0x00, 0x00, 0xf0, 0x55, 0x00, 0x00, //  |`I...U..|
             0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, 0xb2, //  |........|
         ];
+        buf.append(&mut data);
         let mut file = Cursor::new(&buf);
         let mut size = 65536;
         let result = load_cell(
@@ -124,6 +126,7 @@ mod tests {
                 has_prev_pointer: true,
             },
             &mut file,
+            0,
             &mut size,
             false,
         );
@@ -142,13 +145,15 @@ mod tests {
 
     #[test]
     fn test_parse_fast_leaf() {
-        let buf = vec![
+        let mut buf = vec![0u8; 4096];
+        let mut data = vec![
             0xf0, 0xff, 0xff, 0xff, 0x6c, 0x66, 0x01, 0x00, //  |....lf..|
             0x48, 0x05, 0x00, 0x00, 0x31, 0x32, 0x30, 0x30, //  |H...1200|
         ];
+        buf.append(&mut data);
         let mut file = Cursor::new(&buf);
         let mut size = 65536;
-        let result = load_cell(&HIVE_NEW, &mut file, &mut size, false);
+        let result = load_cell(&HIVE_NEW, &mut file, 0, &mut size, false);
         assert!(result.is_ok());
         let node = match result.unwrap() {
             Cell::FastLeaf(x) => x,
@@ -163,14 +168,16 @@ mod tests {
 
     #[test]
     fn test_parse_hash_leaf() {
-        let buf = vec![
+        let mut buf = vec![0u8; 4096];
+        let mut data = vec![
             0xf0, 0xff, 0xff, 0xff, 0x6c, 0x68, 0x01, 0x00, //  |....lh..|
             0xa8, 0x09, 0x00, 0x00, 0x82, 0x21, 0x8c, 0x70, //  |.....!.p|
             0xf8, 0xff, 0xff, 0xff, 0xe0, 0x2f, 0x00, 0x00, //  |...../..|
         ];
+        buf.append(&mut data);
         let mut file = Cursor::new(&buf);
         let mut size = 65536;
-        let result = load_cell(&HIVE_NEW, &mut file, &mut size, false);
+        let result = load_cell(&HIVE_NEW, &mut file, 0, &mut size, false);
         assert!(result.is_ok());
         let node = match result.unwrap() {
             Cell::HashLeaf(x) => x,
@@ -185,7 +192,8 @@ mod tests {
 
     #[test]
     fn test_parse_index_root() {
-        let buf = vec![
+        let mut buf = vec![0u8; 4096];
+        let mut data = vec![
             0x80, 0xff, 0xff, 0xff, 0x72, 0x69, 0x1e, 0x00, //  |....ri..|
             0x20, 0xb0, 0x12, 0x00, 0x20, 0xf0, 0x26, 0x00, //  | ... .&.|
             0x20, 0xf0, 0x27, 0x00, 0x20, 0xf0, 0x28, 0x00, //  | .'. .(.|
@@ -203,9 +211,10 @@ mod tests {
             0x20, 0xf0, 0x22, 0x00, 0x20, 0xf0, 0x23, 0x00, //  | .". .#.|
             0x20, 0xf0, 0x24, 0x00, 0x78, 0x60, 0x25, 0x00, //  | .$.x`%.|
         ];
+        buf.append(&mut data);
         let mut file = Cursor::new(&buf);
         let mut size = buf.len() as u32;
-        let result = load_cell(&HIVE_NEW, &mut file, &mut size, false);
+        let result = load_cell(&HIVE_NEW, &mut file, 0, &mut size, false);
         assert!(result.is_ok());
         let node = match result.unwrap() {
             Cell::IndexRoot(x) => x,
@@ -544,9 +553,11 @@ enum Cell {
 fn load_cell<R: Read + Seek>(
     hive: &Hive,
     source: &mut R,
+    offset: u32,
     size: &mut u32,
     raw: bool,
 ) -> std::io::Result<Cell> {
+    source.seek(SeekFrom::Start(offset as u64 + 4096))?;
     let mut cell_header_size = 4;
     let cell_size = source.read_i32::<LittleEndian>()?;
     assert!((cell_size.abs() & 0x07) == 0);
@@ -656,17 +667,17 @@ fn dump_children<R: Read + Seek>(source: &mut R, subkey: Cell) {
     match subkey {
         Cell::IndexLeaf(child) => {
             for offset in child.elements {
-                dump_key_node(source, offset.key_offset as u64);
+                dump_key_node(source, offset.key_offset);
             }
         }
         Cell::FastLeaf(child) => {
             for offset in child.elements {
-                dump_key_node(source, offset.key_offset as u64);
+                dump_key_node(source, offset.key_offset);
             }
         }
         Cell::HashLeaf(child) => {
             for offset in child.elements {
-                dump_key_node(source, offset.key_offset as u64);
+                dump_key_node(source, offset.key_offset);
             }
         }
         _ => {
@@ -675,27 +686,25 @@ fn dump_children<R: Read + Seek>(source: &mut R, subkey: Cell) {
     }
 }
 
-fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
-    source.seek(SeekFrom::Start(offset + 4096)).unwrap();
+fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u32) {
     let mut size = 655360;
     println!("KN Offset: {}", offset);
-    let cell = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
+    let cell = load_cell(&HIVE_NEW, source, offset, &mut size, false).unwrap();
     println!("{:?}", cell);
     match cell {
         Cell::KeyNode(node) => {
             if node.number_subkeys > 0 {
-                source
-                    .seek(SeekFrom::Start(node.subkey_list_offset as u64 + 4096))
-                    .unwrap();
                 size = 655360;
-                let subkey = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
+                let subkey =
+                    load_cell(&HIVE_NEW, source, node.subkey_list_offset, &mut size, false)
+                        .unwrap();
                 println!("{:?}", subkey);
                 match subkey {
                     Cell::IndexRoot(child) => {
                         for offset in child.elements {
-                            source.seek(SeekFrom::Start(offset as u64 + 4096)).unwrap();
                             size = 655360;
-                            let subkey = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
+                            let subkey =
+                                load_cell(&HIVE_NEW, source, offset, &mut size, false).unwrap();
                             println!("{:?}", subkey);
                             dump_children(source, subkey);
                         }
@@ -707,19 +716,17 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
             }
             if node.key_value_count > 0 {
                 println!("KV List Offset: {:x}", node.key_value_offset as u64 + 4096);
-                source
-                    .seek(SeekFrom::Start(node.key_value_offset as u64 + 4096))
-                    .unwrap();
                 size = 655360;
-                let key_value_list = load_cell(&HIVE_NEW, source, &mut size, true).unwrap();
+                let key_value_list =
+                    load_cell(&HIVE_NEW, source, node.key_value_offset, &mut size, true).unwrap();
                 match key_value_list {
                     Cell::Raw(value) => {
                         let mut cursor = Cursor::new(&value.data[..]);
                         for _ in 0..node.key_value_count {
                             size = 655360;
                             let offset = cursor.read_u32::<LittleEndian>().unwrap();
-                            source.seek(SeekFrom::Start(offset as u64 + 4096)).unwrap();
-                            let key_value = load_cell(&HIVE_NEW, source, &mut size, false).unwrap();
+                            let key_value =
+                                load_cell(&HIVE_NEW, source, offset, &mut size, false).unwrap();
                             println!("{:?}", key_value);
                             match key_value {
                                 Cell::KeyValue(child) => {
@@ -727,14 +734,14 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u64) {
                                         if child.data_size & 0x80000000 != 0 {
                                             println!("Data: {:?}", child.data_offset);
                                         } else {
-                                            source
-                                                .seek(SeekFrom::Start(
-                                                    child.data_offset as u64 + 4096,
-                                                ))
-                                                .unwrap();
-                                            let data_value =
-                                                load_cell(&HIVE_NEW, source, &mut size, true)
-                                                    .unwrap();
+                                            let data_value = load_cell(
+                                                &HIVE_NEW,
+                                                source,
+                                                child.data_offset,
+                                                &mut size,
+                                                true,
+                                            )
+                                            .unwrap();
                                             match data_value {
                                                 Cell::Raw(n) => {
                                                     println!("Data: {:?}", n.data);
@@ -790,7 +797,8 @@ fn main() {
         //    println!("Cell raw: {:?}", &key);
         //    println!("Cell key: {:?}", std::str::from_utf8(&key));
         //    file.seek(SeekFrom::Current(cell_size.abs() as i64 - 6));
-        load_cell(&HIVE_NEW, &mut file, &mut size, false).ok();
+        let offset = file.seek(SeekFrom::Current(0)).unwrap() as u32;
+        load_cell(&HIVE_NEW, &mut file, offset, &mut size, false).ok();
     }
-    dump_key_node(&mut file, base_block.root_cell_offset as u64);
+    dump_key_node(&mut file, base_block.root_cell_offset);
 }
