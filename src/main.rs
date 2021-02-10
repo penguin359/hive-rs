@@ -777,28 +777,33 @@ fn main() {
 
     let base_block = load_base_block(&mut file).unwrap();
 
-    let mut magic = [0u8; 4];
-    file.read_exact(&mut magic).unwrap();
-    assert_eq!(&magic, b"hbin");
-    let _offset = file.read_u32::<LittleEndian>().unwrap();
-    let mut size = file.read_u32::<LittleEndian>().unwrap();
-    let _reserved = file.read_u64::<LittleEndian>().unwrap();
-    let _timestamp = file.read_u64::<LittleEndian>().unwrap();
-    let _spare = file.read_u32::<LittleEndian>().unwrap();
-    println!("Bin size: {}", size);
-    println!("Hive: {:?}", base_block);
-    size -= 32;
-    while size > 0 {
-        //    let cell_size = file.read_i32::<LittleEndian>().unwrap();
-        //    assert!((cell_size.abs() & 0x07) == 0);
-        //    let mut key = [0u8; 2];
-        //    file.read_exact(&mut key).unwrap();
-        //    //assert_eq!(&magic, b"hbin");
-        //    println!("Cell raw: {:?}", &key);
-        //    println!("Cell key: {:?}", std::str::from_utf8(&key));
-        //    file.seek(SeekFrom::Current(cell_size.abs() as i64 - 6));
-        let offset = file.seek(SeekFrom::Current(0)).unwrap() as u32;
-        load_cell(&HIVE_NEW, &mut file, offset, &mut size, false).ok();
+    loop {
+        let mut magic = [0u8; 4];
+        file.read_exact(&mut magic).unwrap();
+        //assert_eq!(&magic, b"hbin");
+        if magic != *b"hbin" {
+            break;
+        }
+        let _offset = file.read_u32::<LittleEndian>().unwrap();
+        let mut size = file.read_u32::<LittleEndian>().unwrap();
+        let _reserved = file.read_u64::<LittleEndian>().unwrap();
+        let _timestamp = file.read_u64::<LittleEndian>().unwrap();
+        let _spare = file.read_u32::<LittleEndian>().unwrap();
+        println!("Bin size: {}", size);
+        println!("Hive: {:?}", base_block);
+        size -= 32;
+        while size > 0 {
+            //    let cell_size = file.read_i32::<LittleEndian>().unwrap();
+            //    assert!((cell_size.abs() & 0x07) == 0);
+            //    let mut key = [0u8; 2];
+            //    file.read_exact(&mut key).unwrap();
+            //    //assert_eq!(&magic, b"hbin");
+            //    println!("Cell raw: {:?}", &key);
+            //    println!("Cell key: {:?}", std::str::from_utf8(&key));
+            //    file.seek(SeekFrom::Current(cell_size.abs() as i64 - 6));
+            let offset = file.seek(SeekFrom::Current(0)).unwrap() as u32 - 4096;
+            load_cell(&HIVE_NEW, &mut file, offset, &mut size, false).ok();
+        }
     }
     dump_key_node(&mut file, base_block.root_cell_offset);
 }
