@@ -557,14 +557,18 @@ fn load_cell<R: Read + Seek>(
     size: &mut u32,
     raw: bool,
 ) -> std::io::Result<Cell> {
+    println!("Cell offset: {}", offset);
     source.seek(SeekFrom::Start(offset as u64 + 4096))?;
     let mut cell_header_size = 4;
     let cell_size = source.read_i32::<LittleEndian>()?;
+    println!("Cell size: {}", cell_size.abs());
     assert!((cell_size.abs() & 0x07) == 0);
     *size -= cell_size.abs() as u32;
     if cell_size > 0 {
         println!("Cell unallocated");
-        source.seek(SeekFrom::Current(cell_size.abs() as i64 - 6))?;
+        source.seek(SeekFrom::Current(
+            cell_size.abs() as i64 - cell_header_size as i64,
+        ))?;
         return Err(::std::io::Error::new(
             ::std::io::ErrorKind::Other,
             "Empty cell",
@@ -574,7 +578,6 @@ fn load_cell<R: Read + Seek>(
         cell_header_size += 4;
         let _prev = source.read_i32::<LittleEndian>()?;
     }
-    println!("Cell size: {}", cell_size.abs());
     if raw {
         let mut buf = vec![0u8; cell_size.abs() as usize - 4];
         source.read_exact(&mut buf)?;
@@ -776,33 +779,35 @@ fn main() {
     let mut file = BufReader::new(File::open(path).unwrap());
 
     let base_block = load_base_block(&mut file).unwrap();
+    println!("Hive: {:?}", base_block);
 
-    loop {
-        let mut magic = [0u8; 4];
-        file.read_exact(&mut magic).unwrap();
-        //assert_eq!(&magic, b"hbin");
-        if magic != *b"hbin" {
-            break;
-        }
-        let _offset = file.read_u32::<LittleEndian>().unwrap();
-        let mut size = file.read_u32::<LittleEndian>().unwrap();
-        let _reserved = file.read_u64::<LittleEndian>().unwrap();
-        let _timestamp = file.read_u64::<LittleEndian>().unwrap();
-        let _spare = file.read_u32::<LittleEndian>().unwrap();
-        println!("Bin size: {}", size);
-        println!("Hive: {:?}", base_block);
-        size -= 32;
-        while size > 0 {
-            //    let cell_size = file.read_i32::<LittleEndian>().unwrap();
-            //    assert!((cell_size.abs() & 0x07) == 0);
-            //    let mut key = [0u8; 2];
-            //    file.read_exact(&mut key).unwrap();
-            //    //assert_eq!(&magic, b"hbin");
-            //    println!("Cell raw: {:?}", &key);
-            //    println!("Cell key: {:?}", std::str::from_utf8(&key));
-            //    file.seek(SeekFrom::Current(cell_size.abs() as i64 - 6));
-            let offset = file.seek(SeekFrom::Current(0)).unwrap() as u32 - 4096;
-            load_cell(&HIVE_NEW, &mut file, offset, &mut size, false).ok();
+    if false {
+        loop {
+            let mut magic = [0u8; 4];
+            file.read_exact(&mut magic).unwrap();
+            //assert_eq!(&magic, b"hbin");
+            if magic != *b"hbin" {
+                break;
+            }
+            let _offset = file.read_u32::<LittleEndian>().unwrap();
+            let mut size = file.read_u32::<LittleEndian>().unwrap();
+            let _reserved = file.read_u64::<LittleEndian>().unwrap();
+            let _timestamp = file.read_u64::<LittleEndian>().unwrap();
+            let _spare = file.read_u32::<LittleEndian>().unwrap();
+            println!("Bin size: {}", size);
+            size -= 32;
+            while size > 0 {
+                //    let cell_size = file.read_i32::<LittleEndian>().unwrap();
+                //    assert!((cell_size.abs() & 0x07) == 0);
+                //    let mut key = [0u8; 2];
+                //    file.read_exact(&mut key).unwrap();
+                //    //assert_eq!(&magic, b"hbin");
+                //    println!("Cell raw: {:?}", &key);
+                //    println!("Cell key: {:?}", std::str::from_utf8(&key));
+                //    file.seek(SeekFrom::Current(cell_size.abs() as i64 - 6));
+                let offset = file.seek(SeekFrom::Current(0)).unwrap() as u32 - 4096;
+                load_cell(&HIVE_NEW, &mut file, offset, &mut size, false).ok();
+            }
         }
     }
     dump_key_node(&mut file, base_block.root_cell_offset);
