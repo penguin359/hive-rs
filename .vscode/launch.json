@@ -1,0 +1,31 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(Windows) Launch",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\target\\debug\\registry.exe",
+            "args": ["winxp\\NTUSER.DAT"], //[".\\boot\\BCD"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "externalTerminal",
+        },
+        {
+            "name": "(Windows) Test Launch",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}\\target\\debug\\deps\\registry-41da62cc0106386e.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "externalTerminal",
+            "preLaunchTask": "cargo test build",
+        },
+    ]
+}
