@@ -6,6 +6,7 @@ use std::io::Cursor;
 use std::io::SeekFrom;
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use clap::{App, Arg};
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
 
@@ -775,13 +776,20 @@ fn dump_key_node<R: Read + Seek>(source: &mut R, offset: u32) {
 }
 
 fn main() {
-    let path = std::env::args().nth(1).unwrap();
+    let matches = App::new("Registry dumper")
+        .version("0.0.1")
+        .author("Loren M. Lang <lorenl@north-winds.org>")
+        .about("Dump registry hive files")
+        .arg(Arg::with_name("raw").short("r").long("raw").help("Dump cell-by-cell"))
+        .arg(Arg::with_name("file").required(true))
+        .get_matches();
+    let path = matches.value_of("file").unwrap();
     let mut file = BufReader::new(File::open(path).unwrap());
 
     let base_block = load_base_block(&mut file).unwrap();
     println!("Hive: {:?}", base_block);
 
-    if false {
+    if matches.is_present("raw") {
         loop {
             let mut magic = [0u8; 4];
             file.read_exact(&mut magic).unwrap();
@@ -809,6 +817,7 @@ fn main() {
                 load_cell(&HIVE_NEW, &mut file, offset, &mut size, false).ok();
             }
         }
+    } else {
+        dump_key_node(&mut file, base_block.root_cell_offset);
     }
-    dump_key_node(&mut file, base_block.root_cell_offset);
 }

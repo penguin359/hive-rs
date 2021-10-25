@@ -6,4 +6,5 @@ version = "0.1.0"
 
 [dependencies]
 byteorder = "*"
+clap = "2.33.3"
 encoding = "0.2.33"
